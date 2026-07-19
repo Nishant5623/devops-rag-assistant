@@ -1,0 +1,9 @@
+Kubernetes Fundamentals
+
+Kubernetes (K8s) is a container orchestration platform that automates the deployment, scaling, and management of containerized applications across a cluster of machines.
+
+The smallest deployable unit in Kubernetes is a Pod, which can contain one or more containers. A Deployment manages a set of replica Pods and handles rolling updates and rollbacks. A Service provides a stable network endpoint to access a set of Pods, even as individual Pods are created or destroyed.
+
+Kubernetes uses a declarative model: engineers describe the desired state in YAML manifests, and the control plane continuously works to match the actual cluster state to that desired state. Key control plane components include the API server, scheduler, and controller manager, while each worker node runs a kubelet and a container runtime.
+
+Namespaces are used to divide cluster resources between multiple users or teams, and ConfigMaps and Secrets are used to manage configuration data and sensitive values separately from application code.

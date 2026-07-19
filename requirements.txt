@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+langchain
+langchain-community
+langchain-anthropic
+langchain-text-splitters
+chromadb
+scikit-learn
+pypdf

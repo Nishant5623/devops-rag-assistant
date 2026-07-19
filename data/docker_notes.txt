@@ -1,0 +1,9 @@
+Docker Basics
+
+Docker is a containerization platform that packages an application and its dependencies into a single, portable unit called a container. Unlike virtual machines, containers share the host operating system kernel, which makes them lightweight and fast to start.
+
+A Dockerfile is a text file containing instructions to build a Docker image, such as FROM, COPY, RUN, and CMD. Once built, an image can be run as a container using "docker run". Images are typically stored and shared using a registry such as Docker Hub or a private registry.
+
+Common commands include "docker build" to create an image, "docker ps" to list running containers, "docker exec" to run a command inside a running container, and "docker-compose" to define and run multi-container applications using a YAML file.
+
+Volumes are used to persist data outside the container's writable layer, and networks allow containers to communicate with each other securely.

@@ -1,0 +1,7 @@
+Ansible Automation Basics
+
+Ansible is an agentless configuration management and automation tool that uses SSH to connect to remote servers and apply configuration changes. Because it does not require installing an agent on target machines, it is considered lightweight and easy to adopt.
+
+Automation tasks are described in YAML files called playbooks, which contain a list of plays. Each play targets a group of hosts defined in an inventory file and runs a sequence of tasks using modules, such as installing a package, copying a file, or restarting a service.
+
+Ansible is idempotent by design, meaning running the same playbook multiple times produces the same end state without unintended side effects. Roles allow playbooks to be organized into reusable, shareable units for common configuration patterns.

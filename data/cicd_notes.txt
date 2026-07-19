@@ -1,0 +1,7 @@
+CI/CD Concepts
+
+Continuous Integration (CI) is the practice of automatically building and testing code every time a change is pushed to a shared repository, catching integration issues early. Continuous Delivery (CD) extends this by automatically preparing that build for release, while Continuous Deployment goes a step further and automatically deploys every passing build to production.
+
+Jenkins is a widely used open-source automation server for building CI/CD pipelines. A Jenkins pipeline is typically defined in a Jenkinsfile using either Declarative or Scripted syntax, describing stages such as build, test, and deploy.
+
+A typical pipeline triggers on a code commit, pulls the latest source, installs dependencies, runs automated tests, builds an artifact or container image, and then deploys it to a staging or production environment if all checks pass.

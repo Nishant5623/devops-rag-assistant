@@ -1,0 +1,9 @@
+Linux System Administration Basics
+
+Linux is an open-source operating system widely used on servers due to its stability, security, and flexibility. Most day-to-day administration happens through the command line shell, such as bash.
+
+File permissions in Linux are controlled using read, write, and execute bits for the owner, group, and others, commonly viewed and modified using "ls -l" and "chmod". Process management commands include "ps", "top", and "kill" to inspect and control running processes.
+
+Package management differs by distribution: Debian-based systems use "apt", while Red Hat-based systems use "yum" or "dnf". System services are commonly managed using "systemctl" on systems that use systemd.
+
+Networking basics include tools like "ip a" or "ifconfig" to view network interfaces, "ping" to test connectivity, and "ss" or "netstat" to inspect open ports and connections.
