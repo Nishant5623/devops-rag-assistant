@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevOps Knowledge Assistant</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>DevOps Knowledge Assistant</h1>
+      <p class="subtitle">Ask questions over the local DevOps notes (Docker, Kubernetes, Linux, CI/CD, Ansible).</p>
+    </header>
+
+    <main class="chat" id="chat" aria-live="polite">
+      <div class="welcome">
+        Try asking something like "What is a Kubernetes Deployment?" or "How does a Dockerfile work?"
+      </div>
+    </main>
+
+    <form class="input-row" id="form">
+      <input
+        type="text"
+        id="input"
+        class="input"
+        placeholder="Type your question..."
+        autocomplete="off"
+        minlength="3"
+        maxlength="500"
+        required
+      />
+      <button type="submit" class="send" id="send">Send</button>
+    </form>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

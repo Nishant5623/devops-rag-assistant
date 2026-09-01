@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+.env
+chroma_store/
+vectorizer.pkl
+.git/
+.gitignore
+*.md
+.github/
+tests/
+.pytest_cache/
