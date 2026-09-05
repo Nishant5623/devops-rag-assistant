@@ -10,8 +10,8 @@ Sets up:
   * static chat frontend at /
 """
 import logging
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import chromadb
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -65,7 +65,7 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # --- Middleware -----------------------------------------------------------
 app.add_middleware(

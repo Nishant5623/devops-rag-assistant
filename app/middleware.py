@@ -3,7 +3,7 @@ Shared middleware for request ID correlation and security headers.
 """
 import hmac
 import uuid
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request

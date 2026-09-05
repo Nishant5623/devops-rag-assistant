@@ -18,7 +18,7 @@ from app.embeddings import TfidfEmbeddingFunction
 logger = logging.getLogger("devops-rag.rag")
 
 
-def _get_client() -> PersistentClient:
+def _get_client() -> PersistentClient:  # type: ignore[valid-type]
     """Return a persistent Chroma client. Keeps the vector store path centralised."""
     settings = get_settings()
     return chromadb.PersistentClient(path=str(settings.chroma_dir))
@@ -30,7 +30,7 @@ def _get_collection():
         raise RuntimeError("No index found. Call POST /ingest first.")
     embedder = TfidfEmbeddingFunction(settings.vectorizer_path)
     client = _get_client()
-    collection = client.get_collection(
+    collection = client.get_collection(  # type: ignore[attr-defined]
         settings.collection_name, embedding_function=embedder
     )
     if collection.count() == 0:
@@ -86,9 +86,9 @@ def generate_answer(query: str, k: int | None = None) -> dict:
     if api_key:
         from langchain_anthropic import ChatAnthropic
 
-        llm = ChatAnthropic(
+        llm = ChatAnthropic(  # type: ignore[call-arg]
             model=settings.llm_model,
-            api_key=api_key,
+            api_key=api_key,  # type: ignore[arg-type]
             max_tokens=settings.llm_max_tokens,
         )
         prompt = PROMPT_TEMPLATE.format(context=context, question=query)
