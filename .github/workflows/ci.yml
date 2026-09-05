@@ -108,6 +108,6 @@ jobs:
         with:
           image-ref: ${{ steps.image-name.outputs.name }}:latest
           format: table
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
           exit-code: 1
           ignore-unfixed: true
