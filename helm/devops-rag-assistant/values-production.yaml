@@ -1,0 +1,42 @@
+# Example production values. Apply with:
+#   helm upgrade --install devops-rag helm/devops-rag-assistant \
+#     --namespace devops-rag \
+#     --values helm/devops-rag-assistant/values-production.yaml \
+#     --set secrets.adminApiKey=<your-key> \
+#     --set image.tag=2.0.0
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/nishant5623/devops-rag-assistant
+  tag: 2.0.0
+  pullPolicy: Always
+
+config:
+  env: production
+  logLevel: INFO
+  workers: "1"
+  corsOrigins: "https://rag.yourdomain.com"
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+ingress:
+  enabled: true
+  host: rag.yourdomain.com
+  tlsSecret: devops-rag-tls
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2

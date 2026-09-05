@@ -1,13 +1,32 @@
+# Git / CI
+.git/
+.gitignore
+.github/
+tests/
+*.md
+
+# Python caches & venvs
 __pycache__/
 *.pyc
 venv/
 .venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Secrets
 .env
+.env.*
+
+# Runtime artifacts (rebuilt in the image)
 chroma_store/
 vectorizer.pkl
-.git/
-.gitignore
-*.md
-.github/
-tests/
-.pytest_cache/
+
+# Tooling config that is not needed at runtime
+.pre-commit-config.yaml
+docker/
+*.tf
+*.tfvars
+terraform/
+helm/
+k8s/

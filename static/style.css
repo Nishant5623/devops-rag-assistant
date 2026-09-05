@@ -84,6 +84,29 @@ body {
   border-bottom-left-radius: 4px;
 }
 
+.bubble .body {
+  word-wrap: break-word;
+}
+
+.bubble .body code,
+.bubble code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 13px;
+}
+
+.bubble .body pre.code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  overflow-x: auto;
+  white-space: pre;
+  margin: 8px 0;
+}
+
 .bubble .sources {
   margin-top: 10px;
   padding-top: 8px;

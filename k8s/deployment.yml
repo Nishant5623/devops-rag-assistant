@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-rag-assistant
+  labels:
+    app: devops-rag-assistant
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devops-rag-assistant
+  template:
+    metadata:
+      labels:
+        app: devops-rag-assistant
+    spec:
+      serviceAccountName: devops-rag-assistant
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: app
+          image: ghcr.io/nishant5623/devops-rag-assistant:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: devops-rag-config
+            - secretRef:
+                name: devops-rag-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /app/chroma_store
+      volumes:
+        - name: data
+          emptyDir: {}

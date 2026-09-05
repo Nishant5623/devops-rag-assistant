@@ -1,0 +1,13 @@
+DevOps RAG Assistant has been deployed!
+
+Get the app URL by running these commands:
+{{- if .Values.ingress.enabled }}
+  export APP_URL=https://{{ .Values.ingress.host }}
+{{- else }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Values.namespace }} -l "app=devops-rag-assistant" -o jsonpath="{.items[0].metadata.name}")
+  kubectl --namespace {{ .Values.namespace }} port-forward $POD_NAME 8000:8000
+  echo "Chat UI: http://127.0.0.1:8000/"
+{{- end }}
+
+Health check:
+  curl {{ if .Values.ingress.enabled }}https://{{ .Values.ingress.host }}{{ else }}http://127.0.0.1:8000{{ end }}/api/v1/health

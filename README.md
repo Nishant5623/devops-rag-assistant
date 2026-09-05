@@ -1,155 +1,207 @@
-# DevOps Knowledge Assistant — a minimal RAG app
+# DevOps Knowledge Assistant — a production-ready RAG service
 
 [![CI](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/ci.yml)
+[![CD](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/cd.yml/badge.svg)](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/cd.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ed.svg)](Dockerfile)
 
-> **Live demo:** (link coming soon) — deploy this repo or `docker run` the
-> image below, then open the single-page chat UI at `/`.
+A full production-grade **Retrieval-Augmented Generation (RAG)** service built
+with **FastAPI**, **LangChain**, **ChromaDB**, and **scikit-learn** that answers
+questions over a local knowledge base of DevOps notes (Docker, Kubernetes,
+Linux, CI/CD, Ansible).
 
-A small, working Retrieval-Augmented Generation (RAG) service built with
-**FastAPI**, **LangChain**, and **ChromaDB**, that answers questions over a
-local knowledge base of DevOps notes (Docker, Kubernetes, Linux, CI/CD,
-Ansible) instead of relying on the LLM's training data alone.
+> **Works fully keyless.** No API key or pretrained-model download is required.
+> The app retrieves from its own document collection and returns grounded
+> answers. Optionally set `ANTHROPIC_API_KEY` to upgrade to LLM-synthesized
+> answers — everything else runs the same.
 
-> RAG here means retrieval from **my own document collection**, not the
-> internet — the app searches only the files in `data/`, then hands the most
-> relevant chunks to an LLM as grounding context before it answers.
+## ✨ Features
 
-## Demo
+- **Versioned REST API** under `/api/v1` (FastAPI + OpenAPI docs at `/docs`)
+- **Fully local RAG**: TF-IDF embeddings + ChromaDB vector store, no external calls needed
+- **Rate limiting** per-IP on `/ask` (slowapi) and `/ingest`
+- **Prometheus metrics** + **Grafana dashboard** + alerting rules
+- **Structured JSON logging** and **OpenTelemetry tracing** (optional collector)
+- **Request-ID correlation** and hardened **security headers**
+- **Optional admin API-key** auth for protected endpoints (`/ingest`, `/metrics`)
+- **Multi-stage, non-root Docker image** with healthcheck
+- **CI/CD** via GitHub Actions (lint → type-check → test → build → scan → deploy)
+- **Kubernetes**: raw manifests (Kustomize), **Helm chart**, and **Terraform** (AWS EKS)
+- **Observability stack** via docker-compose (Prometheus + Grafana)
 
-Once running locally, open **http://localhost:8000/** for the single-page,
-dark-mode chat UI. It keeps a chat-bubble conversation history, shows each
-answer's cited sources (filename + relevance) in smaller text below it, and
-shows a typing indicator while waiting for a response.
-
-<!-- Screenshots: replace the lines below with your own captures after running
-     it locally. 1. The chat UI 2. The /docs Swagger UI 3. A sample /ask
-     response with retrieved sources.
-![Chat UI](docs/screenshot-chat.png)
-![Swagger UI](docs/screenshot-swagger.png)
-![Sample query](docs/screenshot-query.png)
---> 
-
-**Example query:**
-```json
-POST /ask
-{ "question": "What is a Kubernetes Deployment?", "k": 3 }
-```
-**Response (sources always show which notes were actually used):**
-```json
-{
-  "answer": "...A Deployment manages a set of replica Pods and handles rolling updates and rollbacks...",
-  "sources": [
-    { "source": "kubernetes_notes.txt", "distance": 1.07 },
-    { "source": "kubernetes_notes.txt", "distance": 1.62 },
-    { "source": "kubernetes_notes.txt", "distance": 1.83 }
-  ]
-}
-```
-
-## How it works
+## 🏗 Architecture
 
 ```
-data/*.txt  --chunk-->  TF-IDF vectorizer  --embed-->  ChromaDB (vector store)
-                                                              |
-question  --embed (same vectorizer)-->  similarity search ---'
-                                                              |
-                                                  top-k chunks (context)
-                                                              |
-                                        LangChain + Claude ---'--> answer
+                    ┌──────────────────────────────────────────────┐
+ data/*.txt ───────▶│  Ingestion  (app/ingest.py)                  │
+                    │  load → chunk → TF-IDF fit → ChromaDB store  │
+                    └──────────────────────────────────────────────┘
+                                               ▲
+                    ┌──────────────────────────┴──────────────────┐
+  question ────────▶│  Retrieval  (app/rag.py)                    │
+                    │  embed query → vector search → top-k chunks │
+                    └──────────────────────────┬──────────────────┘
+                                               ▼
+                    ┌──────────────────────────┴──────────────────┐
+                    │  Generation                                 │
+                    │  extractive fallback  OR  LLM (Claude)      │
+                    └───────────────────┬─────────────────────────┘
+                                        ▼
+                              answer + cited sources
 ```
 
-1. **Ingestion** (`app/ingest.py`) — reads every `.txt` file in `data/`, splits
-   it into overlapping chunks with LangChain's `RecursiveCharacterTextSplitter`,
-   and indexes the chunks into a persistent ChromaDB collection.
-2. **Embeddings** (`app/embeddings.py`) — a custom Chroma-compatible embedding
-   function backed by scikit-learn's `TfidfVectorizer`, fitted on the corpus at
-   ingestion time. Fully local — no pretrained model download required, which
-   also makes it easy to explain end-to-end. Swapping in a dense embedding
-   model (OpenAI/HuggingFace) later is a drop-in change behind the same
-   interface.
-3. **Retrieval + generation** (`app/rag.py`) — embeds the incoming question
-   with the same vectorizer, retrieves the top-k most similar chunks from
-   Chroma, and passes them as context to Claude (via `langchain-anthropic`) to
-   generate a grounded answer. With no API key configured, it still returns
-   the retrieved context directly (extractive fallback), so the retrieval
-   half of the pipeline is fully testable without any key.
-4. **API** (`app/main.py`) — a FastAPI app with the endpoints below. It also
-   applies per-IP rate limiting on `/ask` (10 req/min), validates `question`
-   (3–500 chars) and `k` (1–10), and exposes Prometheus metrics.
-
-## Endpoints
+## 🔌 Endpoints (all under `/api/v1`)
 
 | Method | Path      | Description                                              |
-|--------|-----------|-------------------------------------------------------------|
-| GET    | `/`         | Single-page chat frontend (served as static files)        |
-| GET    | `/health` | Health check incl. whether the vector index is loaded      |
-| POST   | `/ingest` | (Re)build the vector index from `data/`                    |
-| POST   | `/ask`    | `{"question": "...", "k": 3}` → grounded answer + sources  |
-| GET    | `/metrics` | Prometheus metrics (request count, latency, etc.)          |
+|--------|-----------|----------------------------------------------------------|
+| GET    | `/`         | Single-page chat frontend (static files)               |
+| GET    | `/api/v1/health` | Health check incl. index status + version         |
+| POST   | `/api/v1/ingest` | (Re)build the vector index from `data/` (admin)   |
+| POST   | `/api/v1/ask`    | `{"question": "...", "k": 3}` → answer + sources  |
+| GET    | `/metrics` | Prometheus metrics                                     |
+| GET    | `/docs`    | Interactive OpenAPI / Swagger UI                       |
 
-> `/ask` is rate limited to **10 requests per minute per IP**. Setting `k` to a
-> value outside 1–10 or asking a question shorter than 3 or longer than 500
-> characters returns a `422` validation error.
+- `POST /ask` is rate-limited (default **10/min/IP**).
+- `POST /ingest` and `/metrics` can be protected with `ADMIN_API_KEY`
+  (sent via the `X-Admin-Key` header). Empty key = open (local dev only).
+- `question` is validated to 3–500 chars, `k` to 1–10 (422 otherwise).
 
-## Running it
+## 🚀 Quick Start (keyless)
 
-**macOS / Linux**
+**Local (no key needed):**
+
 ```bash
 pip install -r requirements.txt
-python -m app.ingest          # build the index once
-export ANTHROPIC_API_KEY=...  # optional — enables real LLM-generated answers
+python -m app.ingest          # build the vector index once
 uvicorn app.main:app --reload
 ```
+Open **http://localhost:8000/** for the chat UI, or **/docs** for the API UI.
 
-**Windows (PowerShell)**
-```powershell
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python -m app.ingest
-$env:ANTHROPIC_API_KEY="..."   # optional
-uvicorn app.main:app --reload
-```
+**With the full observability stack (Docker):**
 
-Then open **http://localhost:8000/** for the chat UI, or
-**http://localhost:8000/docs** for an interactive API test UI, or:
 ```bash
-curl -X POST http://localhost:8000/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What is a Kubernetes Deployment?", "k": 3}'
+docker compose up --build
 ```
+- Chat UI: http://localhost:8000/
+- Prometheus: http://localhost:9090/
+- Grafana: http://localhost:3000/ (admin/admin)
 
-**Running tests:**
-```bash
-pytest -v
-```
+**Standalone Docker:**
 
-**Running with Docker:**
 ```bash
 docker build -t devops-rag-assistant .
-docker run -p 8000:8000 -e ANTHROPIC_API_KEY=... devops-rag-assistant
+docker run -p 8000:8000 devops-rag-assistant
 ```
-The image builds the vector index at build time, then serves the API and the
-chat UI at `http://localhost:8000/`.
 
-## Design choices worth knowing (things I'd expect to be asked about)
+## 🧪 Testing & Quality
 
-- **TF-IDF instead of neural embeddings**: chosen for a fully-local,
-  no-download, no-API-key-required indexing step. The trade-off is weaker
-  semantic recall than dense embeddings — it matches on vocabulary overlap,
-  not meaning. Swapping in OpenAI/HuggingFace embeddings for production use
-  would be a natural next step, behind the same `EmbeddingFunction` interface.
-- **Extractive fallback with no API key**: keeps the retrieval half of the
-  system fully testable and honest about what's "real" vs. what needs a key.
-- **Idempotent ingestion**: re-running `/ingest` rebuilds the collection from
-  scratch rather than silently duplicating chunks.
+```bash
+pip install -r requirements.txt
+python -m app.ingest
+pytest -v --cov=app --cov-report=term-missing
+```
 
-## Tech stack
-Python · FastAPI · LangChain · ChromaDB (vector database) · scikit-learn ·
-slowapi (rate limiting) · Prometheus (metrics via prometheus-fastapi-instrumentator)
+- **Lint/format:** `ruff check . && ruff format .`
+- **Type-check:** `mypy app`
+- **Security scan:** `bandit -c pyproject.toml -r app -q`
+- **Pre-commit:** `pre-commit install`
 
-## Possible extensions
-- Swap the `.txt` loader for PDFs (`pypdf` is already in `requirements.txt`)
-- Swap TF-IDF for a dense embedding model
-- Add multi-turn conversation memory
-- Deploy behind a managed vector DB (Pinecone/Qdrant)
+**Load test** (requires `pip install locust`):
+```bash
+locust -f loadtest/locustfile.py --host http://localhost:8000
+```
+
+**RAG retrieval-quality eval:**
+```bash
+python -m app.ingest
+python evaluation/evaluate.py
+```
+
+## ☸️ Deploying to Kubernetes
+
+**Option A — raw manifests (Kustomize):**
+```bash
+kubectl apply -k k8s/
+```
+
+**Option B — Helm:**
+```bash
+helm upgrade --install devops-rag helm/devops-rag-assistant \
+  --namespace devops-rag --create-namespace
+# production example:
+helm upgrade --install devops-rag helm/devops-rag-assistant \
+  --namespace devops-rag \
+  --values helm/devops-rag-assistant/values-production.yaml \
+  --set secrets.adminApiKey=<your-key> \
+  --set image.tag=2.0.0
+```
+
+The chart deploys a Deployment (with liveness/readiness probes), Service,
+ConfigMap, Secret, HorizontalPodAutoscaler, Ingress, and PodDisruptionBudget —
+all running as a **non-root** user.
+
+## 🌩 Deploying to AWS EKS with Terraform
+
+```bash
+cd terraform/aws
+terraform init
+# set TF_VAR_admin_api_key securely, then:
+terraform plan -out=tfplan
+terraform apply tfplan
+```
+The Terraform module provisions an EKS cluster, VPC, ECR repo (with
+lifecycle policy + image scanning), and deploys the app via the Helm chart.
+
+**CI/CD (GitHub Actions):**
+- `CI` runs on every push/PR: lint → type-check → security scan → test w/ coverage.
+- On `main`, it builds & pushes the image to GHCR and runs a **Trivy** scan.
+- `CD` deploys to EKS via Helm (triggered by CI success or manually).
+
+## ⚙️ Configuration (all optional)
+
+Set via environment variables or a `.env` file (see `.env.example`):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ANTHROPIC_API_KEY` | *(empty)* | Enables LLM-synthesized answers; leave empty for keyless mode |
+| `ENV` | `development` | Switches to structured JSON logging when `production` |
+| `LOG_LEVEL` | `INFO` | Log verbosity |
+| `WORKERS` | `1` | Uvicorn worker count |
+| `CORS_ORIGINS` | `*` | Allowed origins (restrict in production) |
+| `ADMIN_API_KEY` | *(empty)* | Protects `/ingest` & `/metrics` via `X-Admin-Key` |
+| `OTLP_ENDPOINT` | *(empty)* | Enable OpenTelemetry tracing (e.g. `collector:4317`) |
+
+## 🧰 Tech Stack
+
+**Python** · **FastAPI** · **LangChain** · **ChromaDB** (vector DB) ·
+**scikit-learn** (TF-IDF) · **slowapi** (rate limiting) · **Prometheus** ·
+**Grafana** · **OpenTelemetry** · **Docker** · **GitHub Actions** ·
+**Kubernetes** · **Helm** · **Terraform** · **locust**
+
+## 📂 Project Layout
+
+```
+app/                 # Python application
+  config.py          # centralised settings (pydantic-settings)
+  embeddings.py      # TF-IDF Chroma embedding function
+  ingest.py          # ingestion pipeline
+  rag.py             # retrieval + generation
+  main.py            # FastAPI app + routing + middleware
+  middleware.py      # request-ID + security headers
+  security.py        # admin API-key auth
+  logging_config.py  # structured JSON logging
+data/                # knowledge base (.txt notes)
+static/              # chat frontend (HTML/CSS/JS)
+tests/               # pytest suite
+k8s/                 # raw Kubernetes manifests (Kustomize)
+helm/                # Helm chart
+terraform/           # AWS EKS Terraform module
+docker/              # Prometheus/Grafana configs + dashboards
+loadtest/            # Locust script
+evaluation/          # RAG retrieval-quality harness
+```
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).

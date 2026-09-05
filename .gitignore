@@ -1,7 +1,41 @@
+# Python
 __pycache__/
 *.pyc
-chroma_store/
-vectorizer.pkl
-.env
+*.pyo
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
 venv/
 .venv/
+env/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Runtime artifacts (rebuilt on demand)
+chroma_store/
+vectorizer.pkl
+
+# Test / linting / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+.mypy_cache/
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+docker/prometheus/data/
+docker/grafana/data/

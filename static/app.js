@@ -15,7 +15,7 @@ form.addEventListener("submit", async (e) => {
   const typing = addTyping();
 
   try {
-    const resp = await fetch("/ask", {
+    const resp = await fetch("/api/v1/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, k: 3 }),
@@ -45,10 +45,41 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Minimal markdown-style renderer: preserves newlines, renders bold / italic /
+// inline code and fenced code blocks. Deliberately kept tiny (no dependencies).
+function renderMd(text) {
+  const esc = escapeHtml(text);
+  const withCode = esc
+    .split(/```/)
+    .map((part, i) =>
+      i % 2 === 1
+        ? "<pre class=\"code\">" + part.replace(/^\w*\n/, "") + "</pre>"
+        : part
+    )
+    .join("");
+  const inline = withCode
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+  return inline.replace(/\n/g, "<br>");
+}
+
 function addBubble(role, text, sources) {
   const div = document.createElement("div");
   div.className = "bubble " + role;
-  div.textContent = text;
+
+  if (role === "bot") {
+    const body = document.createElement("div");
+    body.className = "body";
+    body.innerHTML = renderMd(text);
+    div.appendChild(body);
+  } else {
+    div.textContent = text;
+  }
 
   if (sources && sources.length) {
     const src = document.createElement("div");

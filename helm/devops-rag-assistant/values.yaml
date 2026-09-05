@@ -1,0 +1,48 @@
+# Default values for devops-rag-assistant.
+# WARNING: secrets are overridden via --set / values files in real deployments.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/nishant5623/devops-rag-assistant
+  tag: latest
+  pullPolicy: IfNotPresent
+
+namespace: devops-rag
+
+serviceAccount:
+  name: devops-rag-assistant
+
+config:
+  env: production
+  logLevel: INFO
+  workers: "1"
+  corsOrigins: "https://rag.example.com"
+
+secrets:
+  # Leave empty to run keyless/extractive mode.
+  anthropicApiKey: ""
+  adminApiKey: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 768Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+
+ingress:
+  enabled: true
+  host: rag.example.com
+  tlsSecret: devops-rag-tls
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

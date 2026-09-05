@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Values.namespace }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devops-rag-config
+  namespace: {{ .Values.namespace }}
+data:
+  ENV: {{ .Values.config.env | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  WORKERS: {{ .Values.config.workers | quote }}
+  CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: devops-rag-secrets
+  namespace: {{ .Values.namespace }}
+type: Opaque
+stringData:
+  ANTHROPIC_API_KEY: {{ .Values.secrets.anthropicApiKey | quote }}
+  ADMIN_API_KEY: {{ .Values.secrets.adminApiKey | quote }}

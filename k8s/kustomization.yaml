@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yml
+  - serviceaccount.yml
+  - configmap.yml
+  - secret.yml
+  - deployment.yml
+  - service.yml
+  - hpa.yml
+  - pdb.yml
+  - ingress.yml
+
+images:
+  - name: ghcr.io/nishant5623/devops-rag-assistant
+    newTag: latest
