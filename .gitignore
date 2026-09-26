@@ -27,8 +27,23 @@ vectorizer.pkl
 htmlcov/
 .ruff_cache/
 .mypy_cache/
-.mypy_cache/
 *.log
+
+# Terraform (provider cache and state can hold credentials; never commit)
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# NOTE: .terraform.lock.hcl IS committed on purpose - it pins provider versions.
 
 # IDE / OS
 .vscode/

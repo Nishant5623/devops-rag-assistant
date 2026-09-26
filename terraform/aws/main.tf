@@ -16,12 +16,9 @@ provider "aws" {
   region = var.region
 }
 
-data "aws_caller_identity" "current" {}
-
 locals {
   cluster_name = "devops-rag-cluster"
 }
-
 # --- EKS Cluster ----------------------------------------------------------
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
@@ -37,9 +34,9 @@ module "eks" {
 
   eks_managed_node_groups = {
     main = {
-      desired_size = var.node_desired_size
-      min_size     = var.node_min_size
-      max_size     = var.node_max_size
+      desired_size   = var.node_desired_size
+      min_size       = var.node_min_size
+      max_size       = var.node_max_size
       instance_types = ["t3.medium"]
       capacity_type  = "ON_DEMAND"
     }
@@ -74,6 +71,10 @@ module "vpc" {
 }
 
 # --- ECR Repository -------------------------------------------------------
+# Optional. The deployment pulls from GHCR (see var.image_repository), which
+# is where .github/workflows/ci.yml pushes. This repo is provisioned as a
+# scanning/lifecycle sandbox only; nothing pushes to it unless you also add an
+# ECR push step to CI and set var.image_repository to this repo's URL.
 resource "aws_ecr_repository" "app" {
   name                 = "devops-rag-assistant"
   image_tag_mutability = "MUTABLE"
@@ -125,15 +126,15 @@ provider "helm" {
 
 # --- Helm deployment of the app -------------------------------------------
 resource "helm_release" "app" {
-  name       = "devops-rag"
-  namespace  = "devops-rag"
+  name             = "devops-rag"
+  namespace        = "devops-rag"
   create_namespace = true
 
   chart = "../../helm/devops-rag-assistant"
 
   set {
     name  = "image.repository"
-    value = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/${aws_ecr_repository.app.name}"
+    value = var.image_repository
   }
   set {
     name  = "image.tag"

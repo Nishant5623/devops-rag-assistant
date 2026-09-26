@@ -16,12 +16,16 @@ serviceAccount:
 config:
   env: production
   logLevel: INFO
-  workers: "1"
+  # Rebuild the vector index on startup when it is missing. Required because
+  # the emptyDir volume over /app/chroma_store hides the index in the image.
+  autoIngest: "True"
   corsOrigins: "https://rag.example.com"
 
 secrets:
-  # Leave empty to run keyless/extractive mode.
+  # Leave empty to run keyless/extractive mode. No AI API key is required.
   anthropicApiKey: ""
+  # Leave empty to disable auth on /ingest and /metrics. Set a real value in
+  # any deployment reachable from outside the cluster.
   adminApiKey: ""
 
 resources:

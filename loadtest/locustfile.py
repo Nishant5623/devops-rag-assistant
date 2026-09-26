@@ -5,6 +5,7 @@ Run against a running instance:
     locust -f loadtest/locustfile.py --host http://localhost:8000
 Then open http://localhost:8009 to start a load test.
 """
+
 from locust import HttpUser, between, task
 
 

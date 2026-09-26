@@ -20,10 +20,12 @@ Linux, CI/CD, Ansible).
 
 - **Versioned REST API** under `/api/v1` (FastAPI + OpenAPI docs at `/docs`)
 - **Fully local RAG**: TF-IDF embeddings + ChromaDB vector store, no external calls needed
+- **Self-healing index**: rebuilds the vector store on startup when it is missing
 - **Rate limiting** per-IP on `/ask` (slowapi) and `/ingest`
 - **Prometheus metrics** + **Grafana dashboard** + alerting rules
 - **Structured JSON logging** and **OpenTelemetry tracing** (optional collector)
 - **Request-ID correlation** and hardened **security headers**
+- **Separate liveness/readiness probes** so an unindexed pod is never sent traffic
 - **Optional admin API-key** auth for protected endpoints (`/ingest`, `/metrics`)
 - **Multi-stage, non-root Docker image** with healthcheck
 - **CI/CD** via GitHub Actions (lint → type-check → test → build → scan → deploy)
@@ -56,7 +58,8 @@ Linux, CI/CD, Ansible).
 | Method | Path      | Description                                              |
 |--------|-----------|----------------------------------------------------------|
 | GET    | `/`         | Single-page chat frontend (static files)               |
-| GET    | `/api/v1/health` | Health check incl. index status + version         |
+| GET    | `/api/v1/health` | Liveness: process is up (always 200)             |
+| GET    | `/api/v1/ready`  | Readiness: **503 until the index is queryable**    |
 | POST   | `/api/v1/ingest` | (Re)build the vector index from `data/` (admin)   |
 | POST   | `/api/v1/ask`    | `{"question": "...", "k": 3}` → answer + sources  |
 | GET    | `/metrics` | Prometheus metrics                                     |
@@ -66,6 +69,9 @@ Linux, CI/CD, Ansible).
 - `POST /ingest` and `/metrics` can be protected with `ADMIN_API_KEY`
   (sent via the `X-Admin-Key` header). Empty key = open (local dev only).
 - `question` is validated to 3–500 chars, `k` to 1–10 (422 otherwise).
+- `/health` vs `/ready`: liveness stays 200 so Kubernetes never restart-loops a
+  pod that simply has no index yet, while `/ready` returns 503 so an unusable
+  replica is pulled out of the load balancer instead of serving 400s.
 
 ## 🚀 Quick Start (keyless)
 
@@ -137,9 +143,20 @@ helm upgrade --install devops-rag helm/devops-rag-assistant \
   --set image.tag=2.0.0
 ```
 
-The chart deploys a Deployment (with liveness/readiness probes), Service,
+The chart deploys a Deployment (with startup/liveness/readiness probes), Service,
 ConfigMap, Secret, HorizontalPodAutoscaler, Ingress, and PodDisruptionBudget —
 all running as a **non-root** user.
+
+> **How the index reaches the pod:** the Docker image bakes a prebuilt index in at
+> build time, but the chart mounts an `emptyDir` over `/app/chroma_store`, which
+> hides it. The app therefore re-ingests on startup when the index is missing
+> (`AUTO_INGEST=True`), so every replica is self-sufficient and no manual
+> `POST /ingest` is needed. `/api/v1/ready` only returns 200 once that finishes,
+> so `helm --wait` blocks until the app can actually answer.
+>
+> If you replace the `emptyDir` with a persistent volume claim, remember the index
+> is per-replica local state: either keep `replicaCount: 1` or let each pod build
+> its own copy rather than sharing one volume across replicas.
 
 ## 🌩 Deploying to AWS EKS with Terraform
 
@@ -165,12 +182,29 @@ Set via environment variables or a `.env` file (see `.env.example`):
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ANTHROPIC_API_KEY` | *(empty)* | Enables LLM-synthesized answers; leave empty for keyless mode |
-| `ENV` | `development` | Switches to structured JSON logging when `production` |
+| `ENV` | `development` | Switches to structured JSON logging + HSTS when `production` |
 | `LOG_LEVEL` | `INFO` | Log verbosity |
-| `WORKERS` | `1` | Uvicorn worker count |
+| `AUTO_INGEST` | `True` | Rebuild the index on startup if it is missing |
 | `CORS_ORIGINS` | `*` | Allowed origins (restrict in production) |
 | `ADMIN_API_KEY` | *(empty)* | Protects `/ingest` & `/metrics` via `X-Admin-Key` |
 | `OTLP_ENDPOINT` | *(empty)* | Enable OpenTelemetry tracing (e.g. `collector:4317`) |
+
+> Scale with **replicas**, not uvicorn workers. `/metrics` is served from an
+> in-process Prometheus registry, so multiple workers in one container would each
+> report partial metrics. Use the HPA (`autoscaling` in the Helm values) instead.
+
+## 🔐 Before you expose this to a network
+
+Keyless mode needs no secrets, but two defaults are deliberately open and should
+be changed for anything reachable from outside your workstation:
+
+| Setting | Default | Why it matters |
+|---------|---------|----------------|
+| `ADMIN_API_KEY` | *(empty)* | Empty disables auth on `POST /ingest` (rebuilds the index) and `GET /metrics`. Set a real secret. |
+| `CORS_ORIGINS` | `*` | Allows any origin. Set to your real frontend origin. |
+| `GRAFANA_ADMIN_PASSWORD` | `admin` | Only affects `docker compose`; set it before sharing the stack. |
+
+`ANTHROPIC_API_KEY` can stay empty — that is the supported keyless default.
 
 ## 🧰 Tech Stack
 

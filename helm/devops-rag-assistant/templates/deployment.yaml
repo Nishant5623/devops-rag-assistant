@@ -43,16 +43,29 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
+          # /ready returns 503 until the vector index is queryable, so a replica
+          # whose /app/chroma_store volume is empty never takes traffic.
           readinessProbe:
             httpGet:
-              path: /api/v1/health
+              path: /api/v1/ready
               port: 8000
             periodSeconds: 10
             timeoutSeconds: 5
+            failureThreshold: 3
+          # The app re-ingests on startup, so give it room to build the index
+          # before the liveness probe starts judging it.
+          startupProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 30
           volumeMounts:
             - name: data
               mountPath: /app/chroma_store
       volumes:
+        # A writable dir for Chroma. It also shadows the index baked into the
+        # image, which is why the app re-ingests on startup (AUTO_INGEST).
         - name: data
           emptyDir: {}
 ---

@@ -9,6 +9,7 @@ Usage:
     python -m app.ingest      # ensure index exists
     python evaluation/evaluate.py
 """
+
 import sys
 from pathlib import Path
 
@@ -36,12 +37,16 @@ def evaluate() -> None:
         rank = sources.index(expected) + 1 if expected in sources else 0
         hit = bool(rank)
         hits_ok += int(hit)
-        print(f"{'PASS' if hit else 'FAIL'}\t{question}\texpected={expected}\trank={rank or 'N/A'}")
+        print(
+            f"{'PASS' if hit else 'FAIL'}\t{question}\texpected={expected}\trank={rank or 'N/A'}"
+        )
 
     accuracy = hits_ok / len(GOLDEN_SET)
     print(f"\nRetrieval accuracy (recall@3): {accuracy:.0%}")
     if accuracy < 0.8:
-        print("WARNING: retrieval accuracy below threshold; consider tuning chunking/embeddings.")
+        print(
+            "WARNING: retrieval accuracy below threshold; consider tuning chunking/embeddings."
+        )
 
 
 if __name__ == "__main__":

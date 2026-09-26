@@ -28,6 +28,17 @@ variable "node_max_size" {
   default     = 4
 }
 
+variable "image_repository" {
+  description = <<-EOT
+    Container image repository to deploy. Must match the registry CI actually
+    pushes to (.github/workflows/ci.yml pushes to GHCR). Pointing this at the
+    ECR repo created below would deploy an image reference that never receives
+    a push, and the pods would fail with ImagePullBackOff.
+  EOT
+  type        = string
+  default     = "ghcr.io/nishant5623/devops-rag-assistant"
+}
+
 variable "image_tag" {
   description = "Container image tag to deploy"
   type        = string

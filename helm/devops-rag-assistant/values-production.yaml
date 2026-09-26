@@ -1,4 +1,5 @@
-# Example production values. Apply with:
+# Example production values. The app runs with NO AI API key in extractive
+# mode, so secrets.anthropicApiKey can stay empty. Apply with:
 #   helm upgrade --install devops-rag helm/devops-rag-assistant \
 #     --namespace devops-rag \
 #     --values helm/devops-rag-assistant/values-production.yaml \
@@ -15,8 +16,13 @@ image:
 config:
   env: production
   logLevel: INFO
-  workers: "1"
+  autoIngest: "True"
   corsOrigins: "https://rag.yourdomain.com"
+
+# No AI key required. Set secrets.anthropicApiKey only to upgrade answers from
+# extractive to LLM-synthesized.
+secrets:
+  anthropicApiKey: ""
 
 resources:
   requests:
