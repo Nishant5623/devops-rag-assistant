@@ -42,14 +42,17 @@ COPY --from=builder /opt/venv /opt/venv
 COPY app/ app/
 COPY data/ data/
 COPY static/ static/
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Build the vector index at image build time so the container is ready to serve.
 # The app also re-ingests on startup when the index is missing, which covers
 # deployments that mount an empty volume over /app/chroma_store.
 RUN python -m app.ingest
 
-# Grant the non-root user ownership of the runtime directories it must write to.
-RUN chown -R app:app /app
+# Grant the non-root user ownership of the runtime directories it must write to,
+# and make the entrypoint executable while still running as root.
+RUN chown -R app:app /app && \
+    chmod +x /usr/local/bin/docker-entrypoint.sh
 
 USER app
 
@@ -58,10 +61,14 @@ EXPOSE 8000
 # Liveness only checks that the process serves HTTP. Readiness is a separate
 # endpoint (/api/v1/ready) that returns 503 until the index is queryable, so a
 # replica with an empty index is pulled from the load balancer, not restarted.
+# Reads PORT so this stays correct when a platform overrides the listen port.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"
+  CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/api/v1/health', timeout=3)"
 
 # Single worker per container on purpose: /metrics is served from an in-process
 # Prometheus registry, so multiple workers would report partial metrics. Scale
 # with replicas (see the HPA) instead of WORKERS.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+#
+# The entrypoint honours $PORT/$HOST and optionally trusts X-Forwarded-* when
+# running behind a platform proxy such as Render's.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

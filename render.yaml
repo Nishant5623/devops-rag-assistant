@@ -1,0 +1,46 @@
+# Render Blueprint for the DevOps Knowledge Assistant (RAG).
+#
+# Deploy: Render dashboard -> New -> Blueprint -> pick this repo. Render reads
+# this file and creates the service, so nothing has to be configured by hand.
+#
+# Validate before pushing:  render blueprints validate render.yaml
+#
+# Free plan is 0.1 CPU / 512 MB. The app peaks at ~190 MB RSS, so it fits, but
+# expect a slow cold start: the free instance sleeps after 15 minutes idle and
+# re-ingests on every wake.
+services:
+  - type: web
+    name: devops-rag-assistant
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/ready
+    # Render terminates TLS and proxies to the container, so the app must trust
+    # X-Forwarded-For. Without this, slowapi sees one shared proxy IP and every
+    # visitor shares a single 10-requests-per-minute bucket.
+    envVars:
+      # PORT is not set here on purpose: Render injects it and routes to
+      # whatever it assigns, so hardcoding a value would only risk a mismatch.
+      - key: PROXY_HEADERS
+        value: "1"
+      - key: ENV
+        value: production
+      - key: AUTO_INGEST
+        value: "true"
+      # The free instance has an ephemeral disk, so the baked-in index is
+      # invisible at runtime. Startup ingestion rebuilds it every cold start.
+      - key: CHROMA_DIR
+        value: /tmp/chroma_store
+      # Protects /ingest and /metrics. Render generates a random 256-bit value
+      # on first sync; read it from the dashboard to call those endpoints.
+      - key: ADMIN_API_KEY
+        generateValue: true
+      # Entirely optional. The app answers in extractive mode without it.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # The chat UI is served by this same app, so same-origin requests need no
+      # CORS. Set this to your real origin if you host the UI separately.
+      - key: CORS_ORIGINS
+        value: "[]"

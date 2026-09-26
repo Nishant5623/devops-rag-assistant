@@ -124,6 +124,43 @@ python -m app.ingest
 python evaluation/evaluate.py
 ```
 
+## ☁️ Deploying to Render (free tier)
+
+The repo contains a `render.yaml` Blueprint, so there is nothing to configure by
+hand:
+
+1. Push this branch to GitHub.
+2. In Render: **New → Blueprint** → select this repository.
+3. Render reads `render.yaml` and creates a free web service. It will offer to set
+   `ANTHROPIC_API_KEY`; **skip it** — the app answers in extractive mode without a
+   key.
+
+Your service comes up at `https://devops-rag-assistant.onrender.com`.
+
+The Blueprint sets:
+
+| Setting | Why |
+| --- | --- |
+| `plan: free` | 0.1 CPU / 512 MB. The app peaks at ~190 MB RSS, so it fits. |
+| `healthCheckPath: /api/v1/ready` | Readiness, not liveness. The instance is not routed traffic until the index is queryable. |
+| `PROXY_HEADERS=1` | Render proxies to the container. Without this, slowapi sees the proxy IP for every caller and the whole internet shares one 10-requests-per-minute bucket. |
+| `ADMIN_API_KEY` (generated) | Random 256-bit value. Read it from the dashboard to call `/ingest` or `/metrics`; both return 401 without it. |
+| `CHROMA_DIR=/tmp/chroma_store` | Keeps the index off `/app` and off the ephemeral disk's app directory. |
+| `CORS_ORIGINS=[]` | The chat UI is served by this same app, so same-origin requests need no CORS. |
+
+**Expect a slow first request.** The free instance sleeps after 15 minutes
+idle, and every wake re-imports ChromaDB and re-ingests before it accepts
+traffic — roughly 45 seconds on 0.1 vCPU versus about 7 seconds on a normal
+machine. That is inherent to the free plan, not a misconfiguration. A paid
+`0.5c-512mb` instance behaves the same way but starts faster.
+
+The Dockerfile honours `$PORT` and `$HOST` (defaulting to `8000`/`0.0.0.0`) via
+`docker-entrypoint.sh`, so the same image works unchanged on Docker, Kubernetes
+and Render.
+
+> Free instances also have no uptime guarantee and Render may restart them, so
+> treat the URL as a demo endpoint rather than anything production.
+
 ## ☸️ Deploying to Kubernetes
 
 **Option A — raw manifests (Kustomize):**

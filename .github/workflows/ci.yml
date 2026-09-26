@@ -56,7 +56,9 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest-cov
+          # pyyaml is only used by tests/test_render_deploy.py to parse
+          # render.yaml. It is deliberately not a runtime dependency.
+          pip install pytest-cov pyyaml
 
       - name: Build index
         run: python -m app.ingest
