@@ -5,6 +5,7 @@ All settings are read once at import time and shared across the app. Values
 can be overridden through environment variables (e.g. APP_*_DIR, or the
 documented top-level vars below) following pydantic-settings conventions.
 """
+
 from functools import lru_cache
 from pathlib import Path
 
@@ -25,9 +26,7 @@ class Settings(BaseSettings):
     app_dir: Path = Path(__file__).resolve().parent
     data_dir: Path = Path(__file__).resolve().parent.parent / "data"
     chroma_dir: Path = Path(__file__).resolve().parent.parent / "chroma_store"
-    vectorizer_path: Path = (
-        Path(__file__).resolve().parent.parent / "vectorizer.pkl"
-    )
+    vectorizer_path: Path = Path(__file__).resolve().parent.parent / "vectorizer.pkl"
     static_dir: Path = Path(__file__).resolve().parent.parent / "static"
     collection_name: str = "devops_notes"
 
@@ -38,7 +37,10 @@ class Settings(BaseSettings):
     # Bind to all interfaces so the container can accept external traffic.
     host: str = "0.0.0.0"  # noqa: S104
     port: int = 8000
-    workers: int = 1
+    # Build the vector index on startup if it is missing. The image bakes an
+    # index in at build time, but a Kubernetes emptyDir mounted over
+    # /app/chroma_store hides it, so each pod must rebuild its own index.
+    auto_ingest: bool = True
 
     # --- Retrieval / generation ------------------------------------------
     default_top_k: int = 3
@@ -60,6 +62,11 @@ class Settings(BaseSettings):
     # Shared secret required to call /ingest and to read /metrics. Leave empty
     # to disable auth (not recommended for production).
     admin_api_key: str = ""
+
+    # --- Optional LLM ------------------------------------------------------
+    # Optional. When empty the app answers in extractive mode from the
+    # retrieved context only, so it is fully functional without any AI key.
+    anthropic_api_key: str = ""
 
     # --- Observability ----------------------------------------------------
     env: str = "development"

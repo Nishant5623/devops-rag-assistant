@@ -13,6 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     environment: production
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      EKS_CLUSTER: ${{ vars.EKS_CLUSTER_NAME || 'devops-rag-cluster' }}
+      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'devops-rag' }}
+      # On workflow_run, github.sha is the CD workflow's own SHA, not the commit
+      # CI built an image from. Use the triggering run's head_sha, and fall back
+      # to github.sha for manual dispatch.
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +29,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
@@ -32,18 +40,22 @@ jobs:
       - name: Configure kubeconfig for EKS
         run: |
           aws eks update-kubeconfig \
-            --region ${{ vars.AWS_REGION || 'us-east-1' }} \
-            --name devops-rag-cluster
+            --region "$AWS_REGION" \
+            --name "$EKS_CLUSTER"
 
+      # No AI API key is required. ANTHROPIC_API_KEY is optional: leave the repo
+      # secret unset and the app serves extractive answers from retrieved
+      # context. ADMIN_API_KEY gates POST /ingest and GET /metrics and should be
+      # set for any internet-reachable deployment.
       - name: Deploy with Helm
         env:
           ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           helm upgrade --install devops-rag helm/devops-rag-assistant \
-            --namespace devops-rag --create-namespace \
+            --namespace "$K8S_NAMESPACE" --create-namespace \
             --values helm/devops-rag-assistant/values-production.yaml \
-            --set image.tag=${{ github.sha }} \
+            --set image.tag="$IMAGE_TAG" \
             --set secrets.adminApiKey="$ADMIN_API_KEY" \
             --set secrets.anthropicApiKey="$ANTHROPIC_API_KEY" \
             --wait --timeout 5m
@@ -51,5 +63,13 @@ jobs:
       - name: Verify deployment
         run: |
           kubectl rollout status deployment/devops-rag-assistant \
-            -n devops-rag --timeout=2m
-          kubectl get pods -n devops-rag -l app=devops-rag-assistant
+            -n "$K8S_NAMESPACE" --timeout=2m
+          kubectl get pods -n "$K8S_NAMESPACE" -l app=devops-rag-assistant
+
+      - name: Verify the service answers
+        run: |
+          kubectl run smoke --rm -i --restart=Never \
+            -n "$K8S_NAMESPACE" --image=curlimages/curl:latest --quiet -- \
+            sh -c 'until curl -fsS http://devops-rag-assistant/api/v1/ready; do
+                     echo "waiting for readiness..."; sleep 3;
+                   done; echo'

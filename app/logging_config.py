@@ -5,6 +5,7 @@ Emits structured (key=value or JSON) log records suitable for shipping to
 CloudWatch, Loki, or any log aggregator. Falls back to human-readable output
 for local development.
 """
+
 import json
 import logging
 import sys
@@ -49,8 +50,6 @@ def configure_logging() -> None:
         handler.setFormatter(JsonFormatter())
     else:
         handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s %(levelname)-8s %(name)s :: %(message)s"
-            )
+            logging.Formatter("%(asctime)s %(levelname)-8s %(name)s :: %(message)s")
         )
     root.addHandler(handler)

@@ -5,5 +5,5 @@ metadata:
 data:
   ENV: "production"
   LOG_LEVEL: "INFO"
-  WORKERS: "1"
+  AUTO_INGEST: "True"
   CORS_ORIGINS: "https://rag.example.com"

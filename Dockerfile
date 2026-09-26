@@ -22,10 +22,15 @@ RUN python -m venv /opt/venv && \
 # ---------------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
+# NOTE: the app reads the ENV variable (see app/config.py). Setting APP_ENV
+# here would silently leave the container in development mode, which disables
+# JSON logging and HSTS.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
-    APP_ENV=production
+    ENV=production \
+    ANONYMIZED_TELEMETRY=False \
+    AUTO_INGEST=True
 
 # Create a non-root user to run the app (CVE hardening best practice).
 RUN groupadd --gid 10001 app && \
@@ -39,6 +44,8 @@ COPY data/ data/
 COPY static/ static/
 
 # Build the vector index at image build time so the container is ready to serve.
+# The app also re-ingests on startup when the index is missing, which covers
+# deployments that mount an empty volume over /app/chroma_store.
 RUN python -m app.ingest
 
 # Grant the non-root user ownership of the runtime directories it must write to.
@@ -48,8 +55,13 @@ USER app
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+# Liveness only checks that the process serves HTTP. Readiness is a separate
+# endpoint (/api/v1/ready) that returns 503 until the index is queryable, so a
+# replica with an empty index is pulled from the load balancer, not restarted.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"
 
-# Gunicorn-compatible graceful shutdown via uvicorn's signal handling.
+# Single worker per container on purpose: /metrics is served from an in-process
+# Prometheus registry, so multiple workers would report partial metrics. Scale
+# with replicas (see the HPA) instead of WORKERS.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

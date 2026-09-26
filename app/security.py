@@ -1,6 +1,7 @@
 """
 Authentication helpers for protecting admin endpoints.
 """
+
 import hmac
 
 from fastapi import HTTPException, Request, status

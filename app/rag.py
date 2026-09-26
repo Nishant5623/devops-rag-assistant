@@ -4,18 +4,36 @@ Retrieval + generation logic.
 retrieve(): pure vector-search step against ChromaDB.
 generate_answer(): combines retrieved context with an LLM call (LangChain +
 Anthropic) when ANTHROPIC_API_KEY is set; otherwise falls back to a plain
-extractive answer so the API is fully runnable even with no key configured.
+extractive answer so the API is fully runnable with no key configured.
 """
+
 import logging
-import os
 
 import chromadb
 from chromadb import PersistentClient
+from chromadb.errors import NotFoundError
 
 from app.config import get_settings
 from app.embeddings import TfidfEmbeddingFunction
 
 logger = logging.getLogger("devops-rag.rag")
+
+# Emit the "running keyless" notice exactly once per process instead of on
+# every single request, which floods log aggregators in production.
+_keyless_notice_logged = False
+
+
+def index_available() -> bool:
+    """Return True if the vectorizer and Chroma collection exist and load cleanly."""
+    settings = get_settings()
+    try:
+        if not settings.vectorizer_path.exists():
+            return False
+        client = chromadb.PersistentClient(path=str(settings.chroma_dir))
+        client.get_collection(settings.collection_name)
+        return True
+    except Exception:
+        return False
 
 
 def _get_client() -> PersistentClient:  # type: ignore[valid-type]
@@ -30,9 +48,16 @@ def _get_collection():
         raise RuntimeError("No index found. Call POST /ingest first.")
     embedder = TfidfEmbeddingFunction(settings.vectorizer_path)
     client = _get_client()
-    collection = client.get_collection(  # type: ignore[attr-defined]
-        settings.collection_name, embedding_function=embedder
-    )
+    try:
+        collection = client.get_collection(  # type: ignore[attr-defined]
+            settings.collection_name, embedding_function=embedder
+        )
+    except NotFoundError as exc:
+        # Chroma raises NotFoundError (not RuntimeError) for a missing
+        # collection, which would otherwise escape as an opaque HTTP 500.
+        raise RuntimeError(
+            "Vector index is missing. Call POST /api/v1/ingest to rebuild it."
+        ) from exc
     if collection.count() == 0:
         raise RuntimeError("Index is empty. Call POST /ingest to rebuild it.")
     return collection
@@ -75,13 +100,16 @@ Answer:"""
 
 
 def generate_answer(query: str, k: int | None = None) -> dict:
+    global _keyless_notice_logged
+
     settings = get_settings()
     hits = retrieve(query, k=k)
     context = "\n\n".join(f"[{h['source']}] {h['text']}" for h in hits)
 
     # The app ships fully keyless by default: no API key is required. When an
-    # ANTHROPIC_API_KEY is present we upgrade to LLM-generated answers.
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    # ANTHROPIC_API_KEY is present we upgrade to LLM-generated answers. It is
+    # read through Settings so a key supplied via .env is honoured too.
+    api_key = settings.anthropic_api_key
 
     if api_key:
         from langchain_anthropic import ChatAnthropic
@@ -95,7 +123,12 @@ def generate_answer(query: str, k: int | None = None) -> dict:
         response = llm.invoke(prompt)
         answer = response.content
     else:
-        logger.warning("No ANTHROPIC_API_KEY set; returning extractive fallback.")
+        if not _keyless_notice_logged:
+            logger.info(
+                "ANTHROPIC_API_KEY not set - serving extractive answers from "
+                "retrieved context only."
+            )
+            _keyless_notice_logged = True
         answer = (
             "(No ANTHROPIC_API_KEY set, showing retrieved context directly.)\n\n"
             + context

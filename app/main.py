@@ -9,12 +9,12 @@ Sets up:
   * optional OpenTelemetry tracing
   * static chat frontend at /
 """
+
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-import chromadb
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -25,12 +25,13 @@ from slowapi.util import get_remote_address
 
 from app.config import get_settings
 from app.ingest import run_ingestion
+from app.logging_config import configure_logging
 from app.middleware import (
     AdminGateMiddleware,
     RequestIDMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.rag import generate_answer
+from app.rag import generate_answer, index_available
 from app.security import require_admin
 
 logger = logging.getLogger("devops-rag")
@@ -39,15 +40,37 @@ settings = get_settings()
 limiter = Limiter(key_func=get_remote_address)
 
 
+def _ensure_index() -> None:
+    """Build the vector index on startup when it is absent or empty.
+
+    The Docker image bakes an index in at build time, but Kubernetes mounts an
+    emptyDir over /app/chroma_store, which hides it. Ingestion is idempotent
+    and cheap for a small corpus, so rebuilding here keeps every replica
+    self-sufficient instead of relying on an out-of-band /ingest call.
+    """
+    if not settings.auto_ingest:
+        logger.info("AUTO_INGEST disabled; skipping startup index check.")
+        return
+    if index_available():
+        logger.info("Vector index already present; skipping startup ingestion.")
+        return
+    logger.warning("Vector index missing or unreadable - running ingestion now.")
+    result = run_ingestion()
+    logger.info("Startup ingestion complete: %s", result)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    configure_logging()
     _setup_telemetry(app)
     logger.info(
-        "Starting %s v%s (env=%s)",
+        "Starting %s v%s (env=%s, llm=%s)",
         settings.app_name,
         settings.app_version,
         settings.env,
+        "anthropic" if settings.anthropic_api_key else "extractive (keyless)",
     )
+    _ensure_index()
     yield
     logger.info("Shutting down %s", settings.app_name)
 
@@ -123,23 +146,28 @@ class AskRequest(BaseModel):
 api = APIRouter(prefix=settings.api_prefix)
 
 
-def _index_available() -> bool:
-    """Return True if the vectorizer and Chroma collection exist and load cleanly."""
-    try:
-        if not settings.vectorizer_path.exists():
-            return False
-        client = chromadb.PersistentClient(path=str(settings.chroma_dir))
-        client.get_collection(settings.collection_name)
-        return True
-    except Exception:
-        return False
-
-
 @api.get("/health")
 def health() -> dict:
+    """Liveness probe. Reports process health only, so it must stay 200 even
+    when the index is missing - otherwise Kubernetes restarts a pod that is
+    merely waiting on (or needs) ingestion."""
     return {
         "status": "ok",
-        "index_loaded": _index_available(),
+        "index_loaded": index_available(),
+        "version": settings.app_version,
+    }
+
+
+@api.get("/ready")
+def ready(response: Response) -> dict:
+    """Readiness probe. Returns 503 until the vector index is queryable, so a
+    replica without a usable index never receives traffic."""
+    loaded = index_available()
+    if not loaded:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {
+        "status": "ready" if loaded else "not_ready",
+        "index_loaded": loaded,
         "version": settings.app_version,
     }
 
@@ -163,6 +191,13 @@ def ask(request: Request, req: AskRequest) -> dict:
         return generate_answer(req.question, k=req.k)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        # Never surface a raw 500 for an index/retrieval problem: log the
+        # detail server-side and return a clean, actionable message.
+        logger.exception("Ask failed for question=%r", req.question)
+        raise HTTPException(
+            status_code=500, detail="Internal error while answering the question."
+        ) from exc
 
 
 app.include_router(api)

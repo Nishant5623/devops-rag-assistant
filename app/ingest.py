@@ -1,6 +1,7 @@
 """
 Ingestion pipeline: load documents -> split into chunks -> embed -> store in ChromaDB.
 """
+
 import logging
 from contextlib import suppress
 from pathlib import Path
@@ -25,8 +26,9 @@ def load_documents(data_dir: Path | None = None) -> list[dict]:
     return docs
 
 
-def chunk_documents(docs: list[dict], chunk_size: int | None = None,
-                    chunk_overlap: int | None = None) -> list[dict]:
+def chunk_documents(
+    docs: list[dict], chunk_size: int | None = None, chunk_overlap: int | None = None
+) -> list[dict]:
     """Split each document into overlapping chunks for better retrieval granularity."""
     settings = get_settings()
     chunk_size = chunk_size or settings.chunk_size

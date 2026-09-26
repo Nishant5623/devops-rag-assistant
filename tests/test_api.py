@@ -42,16 +42,12 @@ def test_ask_with_short_question_returns_422():
 
 
 def test_ask_with_question_too_long_returns_422():
-    resp = client.post(
-        "/api/v1/ask", json={"question": "x" * 501, "k": 3}
-    )
+    resp = client.post("/api/v1/ask", json={"question": "x" * 501, "k": 3})
     assert resp.status_code == 422
 
 
 def test_ask_with_top_k_out_of_range_returns_422():
-    resp = client.post(
-        "/api/v1/ask", json={"question": "what is docker?", "k": 99}
-    )
+    resp = client.post("/api/v1/ask", json={"question": "what is docker?", "k": 99})
     assert resp.status_code == 422
 
 

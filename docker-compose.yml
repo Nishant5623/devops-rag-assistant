@@ -11,13 +11,17 @@ services:
     ports:
       - "8000:8000"
     environment:
-      ENV: development
-      LOG_LEVEL: INFO
-      WORKERS: "1"
-      # Leave ANTHROPIC_API_KEY unset to run in keyless/extractive mode.
+      ENV: ${ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      AUTO_INGEST: "True"
+      # No AI API key is required. Leave ANTHROPIC_API_KEY empty to answer
+      # straight from the retrieved context (extractive mode).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      CORS_ORIGINS: "*"
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      # Empty disables auth on /ingest and /metrics. Set a real value before
+      # exposing this stack beyond your workstation.
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      ANONYMIZED_TELEMETRY: "False"
     volumes:
       - rag_data:/app/chroma_store
     healthcheck:
@@ -25,7 +29,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
   prometheus:
     image: prom/prometheus:v2.53.0
@@ -45,8 +49,10 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      # Local default is admin/admin. Set GRAFANA_ADMIN_PASSWORD before exposing
+      # this stack on a shared network.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro

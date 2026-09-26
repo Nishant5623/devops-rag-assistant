@@ -1,6 +1,7 @@
 """
 Shared middleware for request ID correlation and security headers.
 """
+
 import hmac
 import uuid
 from collections.abc import Awaitable, Callable

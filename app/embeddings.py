@@ -6,6 +6,7 @@ and retrieval run fully locally with no external model download and no API
 key. Swapping this out for a dense embedding model (e.g. OpenAI/HuggingFace)
 later is a drop-in change: implement the same `__call__` interface.
 """
+
 import pickle
 from pathlib import Path
 
