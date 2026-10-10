@@ -149,6 +149,25 @@ jobs:
           exit-code: 1
           ignore-unfixed: true
 
+      # Prove the tooling-free runtime actually boots: the image no longer
+      # ships pip/setuptools/wheel (removed in the Dockerfile), so if the app
+      # or any dependency imported them at run time, uvicorn would fail to come
+      # up and this step would catch it before the image is pushed.
+      - name: Smoke-test the image (runtime boots without packaging tooling)
+        env:
+          IMAGE_NAME: ${{ steps.image-name.outputs.name }}
+        run: |
+          cid="$(docker run -d -e PORT=8000 -p 18000:8000 "${IMAGE_NAME}:${{ github.sha }}")"
+          ok=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18000/api/v1/health >/dev/null 2>&1; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs "$cid" || true
+          docker rm -f "$cid" >/dev/null 2>&1 || true
+          if [ "$ok" != "1" ]; then echo "::error::Container did not become healthy"; exit 1; fi
+          echo "::notice::Container served /api/v1/health OK without pip/setuptools/wheel"
+
       # Pushes the SAME local image object Trivy scanned. The guard asserts the
       # tag still resolves to the exact scanned image ID, so a rebuild between
       # scan and push is impossible by construction.

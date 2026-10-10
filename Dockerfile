@@ -16,23 +16,17 @@ COPY requirements.txt .
 RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install --upgrade pip && \
     /opt/venv/bin/pip install -r requirements.txt && \
-    # Trivy false-positive cleanups. Both files are build-time metadata that
-    # leaks stale package versions into the scanner's "installed" list:
-    #  1. setuptools vendors pinned *.dist-info metadata (e.g. the wheel and
-    #     jaraco.context it embeds) under setuptools/_vendor/. They are not
-    #     installed packages and pip cannot upgrade them, but the Trivy python
-    #     scanner flags the vendored versions (HIGH, unfixable). Remove the
-    #     metadata dirs only: the vendored module code is imported by package
-    #     path and is unaffected.
-    #  2. pip ships pip/_vendor/bom.cdx.json, a CycloneDX SBOM describing pip's
-    #     own build-time deps (setuptools 70.3.0, msgpack 1.1.2, urllib3 2.7.0).
-    #     Trivy's [sbom] analyzer imports those components as if they were
-    #     installed, producing HIGH findings for versions that are not in the
-    #     image. The file is dead weight at runtime; delete it.
-    find /opt/venv/lib/python3.12/site-packages/setuptools/_vendor \
-        -type d -name '*.dist-info' -exec rm -rf {} + && \
-    find /opt/venv/lib/python3.12/site-packages \
-        -path '*/pip/_vendor/bom.cdx.json' -delete
+    # Hardening: the runtime image does not need the packaging toolchain, so
+    # remove it now that the dependencies above are installed. pip, setuptools
+    # and wheel are build-only; the app never imports them at run time.
+    # Removing them also disposes of two things that only ever mislead the
+    # Trivy scanner: setuptools' vendored jaraco.context/wheel code (shipped at
+    # pinned versions that carry CVEs) and pip's _vendor/bom.cdx.json, a stale
+    # CycloneDX SBOM of pip's own build deps (setuptools 70.3.0, msgpack 1.1.2,
+    # urllib3 2.7.0) that Trivy's [sbom] analyzer imports as if those packages
+    # were installed. pip is uninstalled last because it runs the uninstalls.
+    /opt/venv/bin/pip uninstall -y setuptools wheel && \
+    /opt/venv/bin/pip uninstall -y pip
 
 # ---------------------------------------------------------------
 # Runtime stage: minimal image, non-root user
@@ -55,19 +49,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     AUTO_INGEST=True \
     GIT_SHA=${GIT_SHA}
 
-# The base python:3.12-slim image bundles an older setuptools under
-# /usr/local/lib. Upgrade it here so the final image is clean for the
-# HIGH,CRITICAL Trivy gate (requirements.txt covers the /opt/venv copy).
-RUN /usr/local/bin/python3.12 -m pip install --no-cache-dir \
-    --root-user-action=ignore -U 'setuptools==78.1.1' && \
-    # Same cleanups as the builder stage: the copy of setuptools under
-    # /usr/local also embeds *_vendor/*.dist-info metadata, and the base
-    # image's pip ships the stale _vendor/bom.cdx.json SBOM. Both feed the
-    # Trivy gate phantom HIGH findings for packages that are not installed.
-    find /usr/local/lib/python3.12/site-packages/setuptools/_vendor \
-        -type d -name '*.dist-info' -exec rm -rf {} + && \
-    find /usr/local/lib/python3.12/site-packages \
-        -path '*/pip/_vendor/bom.cdx.json' -delete
+# The base python:3.12-slim image ships its own pip/setuptools under
+# /usr/local/lib. The app is served by the tooling-free /opt/venv (see the
+# builder stage), so these are dead weight: removing them drops the vendored
+# setuptools metadata and pip's stale _vendor/bom.cdx.json SBOM that would
+# otherwise feed the HIGH,CRITICAL Trivy gate phantom findings for packages
+# that are not installed. pip is uninstalled last because it runs the
+# uninstalls.
+RUN /usr/local/bin/python3.12 -m pip uninstall -y setuptools wheel && \
+    /usr/local/bin/python3.12 -m pip uninstall -y pip
 
 # Create a non-root user to run the app (CVE hardening best practice).
 RUN groupadd --gid 10001 app && \
