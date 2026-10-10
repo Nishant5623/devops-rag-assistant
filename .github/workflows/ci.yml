@@ -137,7 +137,11 @@ jobs:
         with:
           image-ref: ${{ steps.image-name.outputs.name }}:${{ github.sha }}
           format: table
-          severity: CRITICAL
+          # Gate on HIGH and CRITICAL, fixable only: anything at or above HIGH
+          # fails this job, so the image never reaches GHCR or Render. Scan the
+          # locally-loaded image, not the pushed tag, so nothing unpushed can
+          # enter the registry before the gate reports.
+          severity: HIGH,CRITICAL
           exit-code: 1
           ignore-unfixed: true
 
