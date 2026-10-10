@@ -15,7 +15,15 @@ WORKDIR /build
 COPY requirements.txt .
 RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install --upgrade pip && \
-    /opt/venv/bin/pip install -r requirements.txt
+    /opt/venv/bin/pip install -r requirements.txt && \
+    # setuptools vendors pinned *.dist-info metadata (e.g. the wheel and
+    # jaraco.context it embeds) under setuptools/_vendor/. They are not
+    # installed packages and pip cannot upgrade them, but the Trivy python
+    # scanner flags the vendored versions (HIGH, unfixable). Remove the
+    # metadata dirs only: the vendored module code is imported by package
+    # path and is unaffected.
+    find /opt/venv/lib/python3.12/site-packages/setuptools/_vendor \
+        -type d -name '*.dist-info' -exec rm -rf {} +
 
 # ---------------------------------------------------------------
 # Runtime stage: minimal image, non-root user
@@ -42,7 +50,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # /usr/local/lib. Upgrade it here so the final image is clean for the
 # HIGH,CRITICAL Trivy gate (requirements.txt covers the /opt/venv copy).
 RUN /usr/local/bin/python3.12 -m pip install --no-cache-dir \
-    --root-user-action=ignore -U 'setuptools==78.1.1'
+    --root-user-action=ignore -U 'setuptools==78.1.1' && \
+    # Same vendored-metadata cleanup as the builder stage: the copy of
+    # setuptools under /usr/local also embeds *_vendor/*.dist-info metadata
+    # the Trivy gate would flag as HIGH (and pip cannot upgrade).
+    find /usr/local/lib/python3.12/site-packages/setuptools/_vendor \
+        -type d -name '*.dist-info' -exec rm -rf {} +
 
 # Create a non-root user to run the app (CVE hardening best practice).
 RUN groupadd --gid 10001 app && \
