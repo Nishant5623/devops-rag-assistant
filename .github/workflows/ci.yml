@@ -136,8 +136,8 @@ jobs:
           echo "Trivy will scan ${IMAGE_NAME}:${{ github.sha }} (image ID ${image_id})"
           echo "SCANNED_IMAGE_ID=${image_id}" >> "$GITHUB_ENV"
 
-      # TEMP DEBUG: locate which image paths host the python packages Trivy
-      # reports as HIGH so the real fix targets the right site-packages tree.
+      # TEMP DEBUG: confirm the image still contains only the patched
+      # versions while we validate the Trivy upgrade clears the phantom rows.
       - name: Locate suspect package dist-infos in the image
         env:
           IMAGE_NAME: ${{ steps.image-name.outputs.name }}
@@ -147,22 +147,8 @@ jobs:
               | grep -Ei "msgpack|urllib3|setuptools|wheel|jaraco.context" | sort
           '
 
-      # TEMP DEBUG: dump each Trivy finding's exact source file (Target).
-      - name: Probe both pythons' installed list inside the image
-        env:
-          IMAGE_NAME: ${{ steps.image-name.outputs.name }}
-        run: |
-          docker run --rm --entrypoint sh "${IMAGE_NAME}:${{ github.sha }}" -euc '
-            echo "== /usr/local python pip list =="
-            /usr/local/bin/python3.12 -m pip list 2>/dev/null || true
-            echo "== /opt/venv pip list =="
-            /opt/venv/bin/pip list 2>/dev/null || true
-            echo "== grep Name: msgpack/urllib3/setuptools across /usr and /opt =="
-            grep -rlE "^(Name: (msgpack|urllib3|setuptools)| 1\.1\.2| 2\.7\.0| 70\.3\.0)" /usr /opt 2>/dev/null | head -30 || true
-          '
-
       - name: Run Trivy vulnerability scanner (gates the push)
-        uses: aquasecurity/trivy-action@v0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.image-name.outputs.name }}:${{ github.sha }}
           format: table
