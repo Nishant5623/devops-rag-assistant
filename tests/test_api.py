@@ -19,6 +19,20 @@ def test_health_returns_version():
     assert body["version"] == get_settings().app_version
 
 
+def test_health_reports_commit_sha():
+    """sha is exposed on /api/v1/health so CD can verify what commit is live."""
+    resp = client.get("/api/v1/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sha"] == get_settings().git_sha
+
+
+def test_health_root_alias_reports_sha():
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert "sha" in resp.json()
+
+
 def test_ingest_then_ask_returns_sources():
     ingest_resp = client.post("/api/v1/ingest")
     assert ingest_resp.status_code == 200

@@ -6,6 +6,7 @@ can be overridden through environment variables (e.g. APP_*_DIR, or the
 documented top-level vars below) following pydantic-settings conventions.
 """
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     app_name: str = "DevOps Knowledge Assistant (RAG)"
     app_version: str = "2.0.0"
     api_prefix: str = "/api/v1"
+    # The exact commit this build was compiled from. Set via the Dockerfile's
+    # GIT_SHA build arg (CI passes github.sha). Kept a plain field so the
+    # Dockerfile default below is a sentinel for "built outside CI".
+    git_sha: str = "dev"
     # Bind to all interfaces so the container can accept external traffic.
     host: str = "0.0.0.0"  # noqa: S104
     port: int = 8000
@@ -84,6 +89,18 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.env.lower() in {"production", "prod", "staging"}
+
+    @property
+    def resolved_git_sha(self) -> str:
+        """The commit actually running, resolving CI-less builds too.
+
+        Render builds the image itself (CI build args never reach it), but it
+        injects RENDER_GIT_COMMIT with the deployed commit hash at runtime.
+        So /health can always report the real SHA, not just 'dev'.
+        """
+        if self.git_sha != "dev":
+            return self.git_sha
+        return os.environ.get("RENDER_GIT_COMMIT", "dev")
 
 
 @lru_cache

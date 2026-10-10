@@ -22,6 +22,11 @@ RUN python -m venv /opt/venv && \
 # ---------------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
+# The exact commit this image was built from. CI passes github.sha; when the
+# image is built elsewhere (e.g. Render) the value stays "dev" and the app
+# falls back to Render's RENDER_GIT_COMMIT env var at runtime. See config.py.
+ARG GIT_SHA=dev
+
 # NOTE: the app reads the ENV variable (see app/config.py). Setting APP_ENV
 # here would silently leave the container in development mode, which disables
 # JSON logging and HSTS.
@@ -30,7 +35,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     ENV=production \
     ANONYMIZED_TELEMETRY=False \
-    AUTO_INGEST=True
+    AUTO_INGEST=True \
+    GIT_SHA=${GIT_SHA}
 
 # Create a non-root user to run the app (CVE hardening best practice).
 RUN groupadd --gid 10001 app && \

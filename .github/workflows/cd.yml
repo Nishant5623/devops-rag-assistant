@@ -43,20 +43,26 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for service to become ready
+      - name: Wait for service to report the deployed commit
+        env:
+          # On workflow_run, github.sha is the CD workflow's own SHA, not the
+          # commit CI ran on. head_sha is the commit that triggered CI and that
+          # Render checks out when it builds main.
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          echo -n "Waiting for ${RENDER_SERVICE_URL}/api/v1/ready"
+          echo "Waiting for ${RENDER_SERVICE_URL}/health to report sha ${EXPECTED_SHA}"
           for i in $(seq 1 120); do
-            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
-              "$RENDER_SERVICE_URL/api/v1/ready" || true)"
-            if [ "$code" = "200" ]; then
-              echo " service is ready (attempt $i)."
+            body="$(curl -sS --max-time 10 "$RENDER_SERVICE_URL/health" 2>/dev/null || true)"
+            reported="$(printf '%s' "$body" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("sha",""))' 2>/dev/null || true)"
+            if [ -n "$reported" ] && [ "$reported" = "$EXPECTED_SHA" ]; then
+              echo
+              echo "Service is live and reports sha $reported (attempt $i)."
               exit 0
             fi
             printf '.'
             sleep 5
           done
           echo
-          echo "Service did not report ready within 10 minutes."
+          echo "Service did not report sha ${EXPECTED_SHA} within 10 minutes."
           exit 1

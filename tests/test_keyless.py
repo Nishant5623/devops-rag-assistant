@@ -27,6 +27,19 @@ def test_anthropic_key_defaults_to_empty_keyless():
     assert Settings(_env_file=None).anthropic_api_key == ""
 
 
+def test_resolved_git_sha_prefers_git_sha_field(monkeypatch):
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "from-render")
+    s = Settings(_env_file=None, git_sha="abc123")
+    assert s.resolved_git_sha == "abc123"
+
+
+def test_resolved_git_sha_falls_back_to_render_git_commit(monkeypatch):
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "abc123")
+    s = Settings(_env_file=None)
+    assert s.git_sha == "dev"
+    assert s.resolved_git_sha == "abc123"
+
+
 def test_generate_answer_works_without_any_api_key(monkeypatch):
     """The whole point: a fully functional app with no AI key configured."""
     client.post("/api/v1/ingest")

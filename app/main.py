@@ -155,6 +155,7 @@ def health() -> dict:
         "status": "ok",
         "index_loaded": index_available(),
         "version": settings.app_version,
+        "sha": settings.resolved_git_sha,
     }
 
 

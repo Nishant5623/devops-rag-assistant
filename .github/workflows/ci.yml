@@ -67,6 +67,10 @@ jobs:
         # Threshold matches [tool.coverage.report] fail_under in pyproject.toml.
         run: pytest -v --cov=app --cov-report=term-missing --cov-fail-under=80
 
+      - name: Generate coverage HTML report
+        # Produces htmlcov/ so the artifact upload below has files to attach.
+        run: coverage html
+
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
@@ -103,6 +107,8 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           tags: |
             ${{ steps.image-name.outputs.name }}:latest
             ${{ steps.image-name.outputs.name }}:${{ github.sha }}
