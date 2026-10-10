@@ -142,7 +142,7 @@ jobs:
         env:
           IMAGE_NAME: ${{ steps.image-name.outputs.name }}
         run: |
-          docker run --rm "${IMAGE_NAME}:${{ github.sha }}" sh -euc '
+          docker run --rm --entrypoint sh "${IMAGE_NAME}:${{ github.sha }}" -euc '
             find / \( -name "*.dist-info" -o -name "*.egg-info" \) 2>/dev/null \
               | grep -Ei "msgpack|urllib3|setuptools|wheel|jaraco.context" | sort
           '
