@@ -136,6 +136,17 @@ jobs:
           echo "Trivy will scan ${IMAGE_NAME}:${{ github.sha }} (image ID ${image_id})"
           echo "SCANNED_IMAGE_ID=${image_id}" >> "$GITHUB_ENV"
 
+      # TEMP DEBUG: locate which image paths host the python packages Trivy
+      # reports as HIGH so the real fix targets the right site-packages tree.
+      - name: Locate suspect package dist-infos in the image
+        env:
+          IMAGE_NAME: ${{ steps.image-name.outputs.name }}
+        run: |
+          docker run --rm "${IMAGE_NAME}:${{ github.sha }}" sh -euc '
+            find / \( -name "*.dist-info" -o -name "*.egg-info" \) 2>/dev/null \
+              | grep -Ei "msgpack|urllib3|setuptools|wheel|jaraco.context" | sort
+          '
+
       - name: Run Trivy vulnerability scanner (gates the push)
         uses: aquasecurity/trivy-action@v0.35.0
         with:
