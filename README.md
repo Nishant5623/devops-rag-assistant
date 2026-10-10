@@ -61,7 +61,7 @@ Linux, CI/CD, Ansible).
 | GET    | `/api/v1/health` | Liveness: process is up (always 200)             |
 | GET    | `/api/v1/ready`  | Readiness: **503 until the index is queryable**    |
 | POST   | `/api/v1/ingest` | (Re)build the vector index from `data/` (admin)   |
-| POST   | `/api/v1/ask`    | `{"question": "...", "k": 3}` → answer + sources  |
+| POST   | `/api/v1/ask`    | `{"question": "...", "k": 3}` → answer + `found` + cited chunks |
 | GET    | `/metrics` | Prometheus metrics                                     |
 | GET    | `/docs`    | Interactive OpenAPI / Swagger UI                       |
 
@@ -69,6 +69,14 @@ Linux, CI/CD, Ansible).
 - `POST /ingest` and `/metrics` can be protected with `ADMIN_API_KEY`
   (sent via the `X-Admin-Key` header). Empty key = open (local dev only).
 - `question` is validated to 3–500 chars, `k` to 1–10 (422 otherwise).
+- `/ask` returns `found: false` — with an explicit *"not in my notes"* answer
+  and empty `sources` — whenever the question shares no vocabulary with the
+  notes or its best hit is beyond `RELEVANCE_MAX_DISTANCE`, so the app never
+  guesses. When `found: true`, each `sources` entry carries the retrieved
+  `text` chunk, `source` file, and `distance`; the chat UI shows every chunk
+  used to form the answer.
+- `/health` (root) is an alias of `/api/v1/health`, linked from the chat
+  footer alongside `/metrics` and `/docs`.
 - `/health` vs `/ready`: liveness stays 200 so Kubernetes never restart-loops a
   pod that simply has no index yet, while `/ready` returns 503 so an unusable
   replica is pulled out of the load balancer instead of serving 400s.
@@ -154,6 +162,15 @@ traffic — roughly 45 seconds on 0.1 vCPU versus about 7 seconds on a normal
 machine. That is inherent to the free plan, not a misconfiguration. A paid
 `0.5c-512mb` instance behaves the same way but starts faster.
 
+The chat frontend handles this: it pings `/api/v1/ready` on page load and shows
+a **"Waking up the service…"** status bar with a live elapsed timer until the
+instance is ready, and retries a slow `/ask` (502/503/timeout) with friendly
+"still waking up" updates instead of a raw error. Because `healthCheckPath:`
+keeps Render from routing traffic until the index is built, the very first
+HTML request can still be held by Render itself while the container spins up —
+that brief blank is Render's proxy, and the waking message covers everything
+after the page renders.
+
 The Dockerfile honours `$PORT` and `$HOST` (defaulting to `8000`/`0.0.0.0`) via
 `docker-entrypoint.sh`, so the same image works unchanged on Docker, Kubernetes
 and Render.
@@ -222,6 +239,7 @@ Set via environment variables or a `.env` file (see `.env.example`):
 | `ENV` | `development` | Switches to structured JSON logging + HSTS when `production` |
 | `LOG_LEVEL` | `INFO` | Log verbosity |
 | `AUTO_INGEST` | `True` | Rebuild the index on startup if it is missing |
+| `RELEVANCE_MAX_DISTANCE` | `2.0` | Best-hit distance cap for a question to be answerable; beyond it, `/ask` returns `found: false` ("not in my notes") |
 | `CORS_ORIGINS` | `*` | Allowed origins (restrict in production) |
 | `ADMIN_API_KEY` | *(empty)* | Protects `/ingest` & `/metrics` via `X-Admin-Key` |
 | `OTLP_ENDPOINT` | *(empty)* | Enable OpenTelemetry tracing (e.g. `collector:4317`) |

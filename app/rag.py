@@ -98,12 +98,52 @@ Question: {question}
 
 Answer:"""
 
+NOT_FOUND_ANSWER = (
+    "That's not in my notes. I can only answer from the local DevOps notes "
+    "(Docker, Kubernetes, Linux, CI/CD, Ansible) \u2014 try rephrasing your "
+    "question around one of those topics."
+)
+
+
+def _is_in_notes(query: str, hits: list[dict]) -> bool:
+    """Return True only when the question is actually answerable from the corpus.
+
+    TF-IDF retrieval can't spot a miss from the distance alone: a query with no
+    overlapping vocabulary scores exactly 1.0, which looks *better* than many
+    real hits. So a question must (1) share at least one indexed word with the
+    notes and (2) have a best hit within the configured distance cap.
+    """
+    if not hits:
+        return False
+    settings = get_settings()
+    embedder = TfidfEmbeddingFunction(settings.vectorizer_path)
+    vector = embedder([query])[0]
+    if not any(vector):
+        logger.info(
+            "No vocabulary overlap for question=%r; answering 'not in my notes'.",
+            query,
+        )
+        return False
+    return hits[0]["distance"] <= settings.relevance_max_distance
+
 
 def generate_answer(query: str, k: int | None = None) -> dict:
     global _keyless_notice_logged
 
     settings = get_settings()
     hits = retrieve(query, k=k)
+
+    # Gate before touching the LLM: never hand the model ambiguous context and
+    # let it bluff. Off-topic questions get an explicit "not in my notes"
+    # answer with no sources instead.
+    if not _is_in_notes(query, hits):
+        return {
+            "question": query,
+            "answer": NOT_FOUND_ANSWER,
+            "found": False,
+            "sources": [],
+        }
+
     context = "\n\n".join(f"[{h['source']}] {h['text']}" for h in hits)
 
     # The app ships fully keyless by default: no API key is required. When an
@@ -137,5 +177,9 @@ def generate_answer(query: str, k: int | None = None) -> dict:
     return {
         "question": query,
         "answer": answer,
-        "sources": [{"source": h["source"], "distance": h["distance"]} for h in hits],
+        "found": True,
+        "sources": [
+            {"source": h["source"], "distance": h["distance"], "text": h["text"]}
+            for h in hits
+        ],
     }

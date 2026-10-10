@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     tfidf_max_features: int = 4096
     llm_model: str = "claude-sonnet-4-6"
     llm_max_tokens: int = 400
+    # Answer-sufficiency gate: a question whose TF-IDF embedding shares no
+    # vocabulary with the notes can never match, and a best-hit distance above
+    # this cap is treated as "not in my notes" instead of guessing.
+    relevance_max_distance: float = 2.0
 
     # --- Rate limiting ----------------------------------------------------
     ask_rate_limit: str = "10/minute"

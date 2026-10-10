@@ -218,6 +218,14 @@ def api_root() -> dict:
     }
 
 
+# Friendly non-versioned aliases linked from the chat footer. Registered before
+# the static mount at "/" so they are never shadowed by StaticFiles.
+@app.get("/health", include_in_schema=False)
+def health_root() -> dict:
+    """Alias for /api/v1/health, linked from the chat frontend."""
+    return health()
+
+
 # --- Static frontend (mounted last so it does not shadow API routes) ------
 if settings.static_dir.exists():
     app.mount(

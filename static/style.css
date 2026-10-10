@@ -60,6 +60,35 @@ body {
   margin-top: 40px;
   font-size: 14px;
 }
+.prompt-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 14px;
+}
+.chip {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.chip:hover,
+.chip:focus-visible {
+  border-color: var(--accent);
+  color: #fff;
+  background: #1f2632;
+  outline: none;
+}
 
 .bubble {
   max-width: 82%;
@@ -114,30 +143,69 @@ body {
   font-size: 12px;
   color: var(--source);
 }
-.bubble .sources .source {
+.bubble .sources-title {
+  margin-bottom: 4px;
+}
+.bubble .source {
   display: block;
-  margin-top: 3px;
+  margin-top: 6px;
+}
+.bubble .source summary {
+  cursor: pointer;
+  color: var(--accent);
+  user-select: none;
+}
+.bubble .source summary:hover {
+  text-decoration: underline;
+}
+.bubble .source-text {
+  margin: 6px 0 0;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.bubble.notfound {
+  border-color: #8a6d3b;
+}
+.bubble.notfound .body {
+  color: #ffd28a;
 }
 
 .typing {
   align-self: flex-start;
   display: flex;
-  gap: 5px;
+  flex-direction: column;
+  gap: 6px;
   padding: 14px 16px;
   background: var(--bot-bubble);
   border: 1px solid var(--border);
   border-radius: 16px;
   border-bottom-left-radius: 4px;
 }
-.typing span {
+.typing .dot {
+  display: flex;
+  gap: 5px;
+}
+.typing .dot span {
   width: 8px;
   height: 8px;
   background: var(--muted);
   border-radius: 50%;
   animation: blink 1.2s infinite;
 }
-.typing span:nth-child(2) { animation-delay: 0.2s; }
-.typing span:nth-child(3) { animation-delay: 0.4s; }
+.typing .dot span:nth-child(2) { animation-delay: 0.2s; }
+.typing .dot span:nth-child(3) { animation-delay: 0.4s; }
+.typing .status {
+  color: var(--muted);
+  font-size: 12px;
+}
 
 @keyframes blink {
   0%, 80%, 100% { opacity: 0.25; }
@@ -179,4 +247,55 @@ body {
 .send:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.waking {
+  margin: 4px 24px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+  border-radius: 8px;
+  text-align: center;
+}
+.waking::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  vertical-align: -1px;
+}
+.waking.ready::before {
+  display: none;
+}
+.waking.ready {
+  color: #4ade80;
+  border-left-color: #4ade80;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  padding: 12px 24px 16px;
+  font-size: 13px;
+  background: var(--panel);
+}
+.footer a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.footer a:hover {
+  color: var(--accent);
 }

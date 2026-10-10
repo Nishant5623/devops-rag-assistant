@@ -36,6 +36,40 @@ def test_ingest_then_ask_returns_sources():
     assert len(body["sources"]) > 0
 
 
+def test_ask_sources_include_chunk_text():
+    client.post("/api/v1/ingest")
+    resp = client.post(
+        "/api/v1/ask", json={"question": "What is a Kubernetes Deployment?", "k": 2}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["found"] is True
+    for source in body["sources"]:
+        assert source["text"], "Each source should carry the chunk text used"
+        assert source["source"]
+        assert "distance" in source
+
+
+def test_ask_out_of_scope_returns_not_in_my_notes():
+    client.post("/api/v1/ingest")
+    resp = client.post(
+        "/api/v1/ask", json={"question": "What is the capital of France?", "k": 3}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["found"] is False
+    assert body["sources"] == [], "No chunks are used to answer an off-topic question"
+    assert "not in my notes" in body["answer"].lower()
+
+
+def test_health_alias_at_root():
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["version"] == get_settings().app_version
+
+
 def test_ask_with_short_question_returns_422():
     resp = client.post("/api/v1/ask", json={"question": "a", "k": 3})
     assert resp.status_code == 422

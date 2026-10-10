@@ -14,10 +14,20 @@
     </header>
 
     <main class="chat" id="chat" aria-live="polite">
-      <div class="welcome">
-        Try asking something like "What is a Kubernetes Deployment?" or "How does a Dockerfile work?"
+      <div class="welcome" id="welcome">
+        <p class="prompt-hint">Try one of these:</p>
+        <div class="chips">
+          <button type="button" class="chip" data-q="What is a Kubernetes Deployment?">What is a Kubernetes Deployment?</button>
+          <button type="button" class="chip" data-q="How does a Dockerfile work?">How does a Dockerfile work?</button>
+          <button type="button" class="chip" data-q="How do Docker volumes work?">How do Docker volumes work?</button>
+          <button type="button" class="chip" data-q="How do I check disk space on Linux?">How do I check disk space on Linux?</button>
+          <button type="button" class="chip" data-q="How does Ansible automate tasks?">How does Ansible automate tasks?</button>
+          <button type="button" class="chip" data-q="What is a CI/CD pipeline?">What is a CI/CD pipeline?</button>
+        </div>
       </div>
     </main>
+
+    <div class="waking" id="waking" hidden></div>
 
     <form class="input-row" id="form">
       <input
@@ -32,6 +42,12 @@
       />
       <button type="submit" class="send" id="send">Send</button>
     </form>
+
+    <footer class="footer">
+      <a href="/health" target="_blank" rel="noopener">Health</a>
+      <a href="/metrics" target="_blank" rel="noopener">Metrics</a>
+      <a href="/docs" target="_blank" rel="noopener">API docs</a>
+    </footer>
   </div>
 
   <script src="/app.js"></script>
