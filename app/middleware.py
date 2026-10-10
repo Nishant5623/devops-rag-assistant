@@ -14,6 +14,29 @@ from app.config import get_settings
 
 RequestResponseEndpoint = Callable[[Request], Awaitable[Response]]
 
+# Strict policy for the application itself. It is deliberately hostile to
+# third-party script/style injection, so it must NOT be applied to /docs and
+# /redoc, whose SwaggerUI/ReDoc HTML loads its assets from cdn.jsdelivr.net
+# and carries an inline bootstrap <script>/<style> block.
+_DEFAULT_CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; "
+    "img-src 'self' data:; base-uri 'self'; frame-ancestors 'none'"
+)
+
+# Looser policy for the API documentation endpoints only. Scripts/styles come
+# from cdn.jsdelivr.net (SwaggerUI) and the page itself uses an inline script
+# and an inline <style>, so 'unsafe-inline' is required there. Everything else
+# (openapi.json, page navigation) stays same-origin.
+_SWAGGER_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https://cdn.jsdelivr.net https://fastapi.tiangolo.com; "
+    "font-src 'self' data:; "
+    "connect-src 'self'; "
+    "base-uri 'self'; frame-ancestors 'none'"
+)
+
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Attach a request ID to every response and to the request state."""
@@ -78,10 +101,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data:; base-uri 'self'; frame-ancestors 'none'"
-        )
+        path = request.url.path
+        if path.startswith("/docs") or path.startswith("/redoc"):
+            response.headers["Content-Security-Policy"] = _SWAGGER_CSP
+        else:
+            response.headers["Content-Security-Policy"] = _DEFAULT_CSP
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=()"
