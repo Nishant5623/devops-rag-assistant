@@ -49,6 +49,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     AUTO_INGEST=True \
     GIT_SHA=${GIT_SHA}
 
+# Pull in all pending OS security updates at build time (e.g. liblzma5,
+# DSA-6549-1). The floating python:3.12-slim base tag can lag its own repos,
+# so refresh the OS layer rather than shipping a stale, vulnerable base.
+RUN apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
+
 # The base python:3.12-slim image ships its own pip/setuptools under
 # /usr/local/lib. The app is served by the tooling-free /opt/venv (see the
 # builder stage), so these are dead weight: removing them drops the vendored
