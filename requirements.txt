@@ -87,7 +87,7 @@ pydantic==2.13.5
 pydantic-settings==2.15.0
 pydantic_core==2.46.5
 Pygments==2.21.0
-pypdf==6.16.2
+pypdf==6.19.0
 PyPika==0.51.1
 pyproject_hooks==1.2.0
 pytest==9.1.1
@@ -102,6 +102,7 @@ rich==15.0.0
 rpds-py==2026.6.3
 scikit-learn==1.9.0
 scipy==1.18.1
+setuptools==78.1.1
 shellingham==1.5.4
 six==1.17.0
 slowapi==0.1.10
@@ -116,7 +117,7 @@ truststore==0.10.4
 typer==0.27.2
 typing-inspection==0.4.4
 typing_extensions==4.16.0
-urllib3==2.7.0
+urllib3==2.8.0
 uuid_utils==0.17.0
 uvicorn[standard]==0.52.4
 watchfiles==1.2.0

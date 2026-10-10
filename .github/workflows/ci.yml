@@ -118,8 +118,12 @@ jobs:
           tags: |
             ${{ steps.image-name.outputs.name }}:${{ github.sha }}
             ${{ steps.image-name.outputs.name }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Scope the gha cache by dependency manifest: any change to
+          # requirements.txt or the Dockerfile changes the scope, which forces a
+          # fresh (uncached) build so a stale venv layer can never silently ship
+          # outdated, vulnerable packages past the Trivy gate.
+          cache-from: type=gha,scope=build-${{ hashFiles('requirements.txt', 'Dockerfile') }}
+          cache-to: type=gha,scope=build-${{ hashFiles('requirements.txt', 'Dockerfile') }},mode=max
 
       # Print the Docker image ID (sha256 of the image config) of the exact
       # image object Trivy is about to scan. Compare it with the pushed digest

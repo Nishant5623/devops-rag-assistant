@@ -38,6 +38,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     AUTO_INGEST=True \
     GIT_SHA=${GIT_SHA}
 
+# The base python:3.12-slim image bundles an older setuptools under
+# /usr/local/lib. Upgrade it here so the final image is clean for the
+# HIGH,CRITICAL Trivy gate (requirements.txt covers the /opt/venv copy).
+RUN /usr/local/bin/python3.12 -m pip install --no-cache-dir \
+    --root-user-action=ignore -U 'setuptools==78.1.1'
+
 # Create a non-root user to run the app (CVE hardening best practice).
 RUN groupadd --gid 10001 app && \
     useradd --uid 10001 --gid app --create-home --shell /usr/sbin/nologin app
