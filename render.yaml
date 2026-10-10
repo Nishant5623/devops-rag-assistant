@@ -11,11 +11,16 @@
 services:
   - type: web
     name: devops-rag-assistant
-    runtime: docker
+    # Image-backed: Render pulls the image that .github/workflows/ci.yml
+    # built, Trivy-scanned, and pushed to GHCR -- so the scanned artifact is
+    # what ships. CD re-pins every deploy to the exact <commit-sha> tag via
+    # the deploy hook's imgURL parameter; :latest here is only the fallback
+    # default reference the service falls back to.
+    runtime: image
     plan: free
     region: oregon
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    image:
+      url: ghcr.io/nishant5623/devops-rag-assistant:latest
     healthCheckPath: /api/v1/ready
     # Render terminates TLS and proxies to the container, so the app must trust
     # X-Forwarded-For. Without this, slowapi sees one shared proxy IP and every

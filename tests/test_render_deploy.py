@@ -40,15 +40,23 @@ def env(service: dict) -> dict[str, dict]:
 
 
 # --- Service shape ---------------------------------------------------------
-def test_service_is_a_free_docker_web_service(service: dict) -> None:
+def test_service_is_a_free_image_backed_web_service(service: dict) -> None:
     assert service["type"] == "web"
-    assert service["runtime"] == "docker"
+    assert service["runtime"] == "image"
     assert service["plan"] == "free"
 
 
-def test_uses_repo_dockerfile_and_context(service: dict) -> None:
-    assert service["dockerfilePath"] == "./Dockerfile"
-    assert service["dockerContext"] == "."
+def test_pulls_the_public_ghcr_image(service: dict) -> None:
+    """Render must pull the CI-built, Trivy-scanned image from GHCR.
+
+    CD re-pins the exact commit-SHA tag on every deploy, so `:latest` here is
+    only the fallback default reference. The image must be public (no
+    registry credential) or Render cannot pull it.
+    """
+    assert "dockerfilePath" not in service
+    assert "dockerContext" not in service
+    assert service["image"]["url"] == "ghcr.io/nishant5623/devops-rag-assistant:latest"
+    assert "creds" not in service["image"]
 
 
 def test_health_check_path_is_a_real_route(service: dict) -> None:

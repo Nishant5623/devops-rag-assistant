@@ -24,9 +24,13 @@ jobs:
       # Override via Settings > Variables if the service URL ever changes.
       RENDER_SERVICE_URL: ${{ vars.RENDER_SERVICE_URL || 'https://devops-rag-assistant.onrender.com' }}
     steps:
-      - name: Trigger Render deploy hook
+      - name: Trigger Render deploy hook (pinned to the scanned image)
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          # On workflow_run, github.sha is the CD workflow's own SHA, not the
+          # commit CI ran on. head_sha is the commit that triggered CI, whose
+          # image CI pushed to GHCR as ghcr.io/<repo>:<head_sha>.
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           if [ -z "$RENDER_DEPLOY_HOOK" ]; then
@@ -34,10 +38,15 @@ jobs:
             echo "::error::Settings > Secrets and variables > Actions, then re-run this job."
             exit 1
           fi
-          # Render's deploy hook returns HTTP 200 as soon as the deploy is
-          # accepted. Never echo the hook URL: it embeds the deploy key.
-          status="$(curl -sS -o /tmp/render_hook.out -w '%{http_code}' -X POST "$RENDER_DEPLOY_HOOK")"
-          echo "Render deploy hook accepted (HTTP ${status})."
+          # Pin this exact SHA-tagged image so the image CI scanned is the one
+          # that ships. Render requires every component of imgURL except the
+          # tag to match the service's default image URL (the :latest above).
+          # See https://render.com/docs/deploy-hooks
+          image_ref="ghcr.io/${GITHUB_REPOSITORY,,}:${EXPECTED_SHA}"
+          url_encoded="$(printf '%s' "$image_ref" | sed -e 's|/|%2F|g' -e 's|:|%3A|g')"
+          # Never echo the hook URL: it embeds the deploy key.
+          status="$(curl -sS -o /tmp/render_hook.out -w '%{http_code}' -X POST "${RENDER_DEPLOY_HOOK}&imgURL=${url_encoded}")"
+          echo "Render deploy hook accepted (HTTP ${status}); pinned image ${image_ref}."
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
             cat /tmp/render_hook.out
             exit 1
