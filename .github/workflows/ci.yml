@@ -102,10 +102,11 @@ jobs:
         id: image-name
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-      # Build BEFORE pushing: Trivy must gate what reaches GHCR. Previously the
-      # image was pushed first and scanned after, so a vulnerable image was
-      # published even though the job then failed. Render deploys the exact
-      # image CD pins by <commit-sha>, and that image must be the scanned one.
+      # ONE build, loaded into the local Docker daemon. It is not pushed yet:
+      # the image Trivy scans below is exactly this locally-loaded image, and
+      # the push step below pushes that same image object. There is no second
+      # build. (Previously the image was pushed first and scanned after, so a
+      # vulnerable image reached GHCR even though the job then failed.)
       - name: Build image (not pushed yet)
         uses: docker/build-push-action@v6
         with:
@@ -120,6 +121,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Print the Docker image ID (sha256 of the image config) of the exact
+      # image object Trivy is about to scan. Compare it with the pushed digest
+      # from the logs below and with the GHCR verification step.
+      - name: Record the image ID Trivy will scan
+        env:
+          IMAGE_NAME: ${{ steps.image-name.outputs.name }}
+        run: |
+          image_id="$(docker inspect --format '{{.Id}}' "${IMAGE_NAME}:${{ github.sha }}")"
+          echo "Trivy will scan ${IMAGE_NAME}:${{ github.sha }} (image ID ${image_id})"
+          echo "SCANNED_IMAGE_ID=${image_id}" >> "$GITHUB_ENV"
+
       - name: Run Trivy vulnerability scanner (gates the push)
         uses: aquasecurity/trivy-action@v0.35.0
         with:
@@ -129,11 +141,67 @@ jobs:
           exit-code: 1
           ignore-unfixed: true
 
+      # Pushes the SAME local image object Trivy scanned. The guard asserts the
+      # tag still resolves to the exact scanned image ID, so a rebuild between
+      # scan and push is impossible by construction.
       - name: Push the scanned image to GHCR
         env:
           IMAGE_NAME: ${{ steps.image-name.outputs.name }}
         run: |
+          current_id="$(docker inspect --format '{{.Id}}' "${IMAGE_NAME}:${{ github.sha }}")"
+          if [ -z "${SCANNED_IMAGE_ID:-}" ] || [ "$current_id" != "$SCANNED_IMAGE_ID" ]; then
+            echo "::error::Image changed between scan and push (${SCANNED_IMAGE_ID:-none} -> ${current_id})"
+            exit 1
+          fi
           docker push "${IMAGE_NAME}:${{ github.sha }}"
           docker push "${IMAGE_NAME}:latest"
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE_NAME}:${{ github.sha }}")"
-          echo "::notice::Pushed scanned image ${digest}"
+          echo "::notice::Pushed scanned image (ID ${current_id}) as ${digest}"
+
+      # Byte-identity check against the registry: the config digest inside the
+      # manifest GHCR now serves for tag <sha> must equal the scanned image ID
+      # recorded above. Proves malware cannot have been swapped in registry-side.
+      - name: Verify GHCR tag is byte-identical to the scanned image
+        env:
+          IMAGE_NAME: ${{ steps.image-name.outputs.name }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+
+          image = os.environ["IMAGE_NAME"]
+          tag = "${{ github.sha }}"
+          repo = image.split("ghcr.io/")[1]
+          token = json.load(urllib.request.urlopen(
+              "https://ghcr.io/token?scope=repository:" + repo + ":pull"
+          ))["token"]
+          accept = ", ".join([
+              "application/vnd.oci.image.index.v1+json",
+              "application/vnd.docker.distribution.manifest.list.v2+json",
+              "application/vnd.oci.image.manifest.v1+json",
+              "application/vnd.docker.distribution.manifest.v2+json",
+          ])
+
+          def fetch(ref):
+              req = urllib.request.Request(
+                  "https://ghcr.io/v2/" + repo + "/manifests/" + ref,
+                  headers={"Authorization": "Bearer " + token, "Accept": accept},
+              )
+              return json.load(urllib.request.urlopen(req))
+
+          manifest = fetch(tag)
+          while "manifests" in manifest:
+              entry = next(
+                  m for m in manifest["manifests"]
+                  if m["platform"]["architecture"] == "amd64"
+              )
+              manifest = fetch(entry["digest"])
+
+          config_digest = manifest["config"]["digest"]
+          expected = os.environ["SCANNED_IMAGE_ID"]
+          print("GHCR config digest for :" + tag + " -> " + config_digest)
+          if config_digest != expected:
+              print("::error::GHCR tag does not match the scanned image (scanned "
+                    + expected + ", registry has " + config_digest + ")")
+              raise SystemExit(1)
+          print("Verified: image in GHCR is byte-identical to the one Trivy scanned.")
+          PY
