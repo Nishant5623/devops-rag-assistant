@@ -16,14 +16,23 @@ COPY requirements.txt .
 RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install --upgrade pip && \
     /opt/venv/bin/pip install -r requirements.txt && \
-    # setuptools vendors pinned *.dist-info metadata (e.g. the wheel and
-    # jaraco.context it embeds) under setuptools/_vendor/. They are not
-    # installed packages and pip cannot upgrade them, but the Trivy python
-    # scanner flags the vendored versions (HIGH, unfixable). Remove the
-    # metadata dirs only: the vendored module code is imported by package
-    # path and is unaffected.
+    # Trivy false-positive cleanups. Both files are build-time metadata that
+    # leaks stale package versions into the scanner's "installed" list:
+    #  1. setuptools vendors pinned *.dist-info metadata (e.g. the wheel and
+    #     jaraco.context it embeds) under setuptools/_vendor/. They are not
+    #     installed packages and pip cannot upgrade them, but the Trivy python
+    #     scanner flags the vendored versions (HIGH, unfixable). Remove the
+    #     metadata dirs only: the vendored module code is imported by package
+    #     path and is unaffected.
+    #  2. pip ships pip/_vendor/bom.cdx.json, a CycloneDX SBOM describing pip's
+    #     own build-time deps (setuptools 70.3.0, msgpack 1.1.2, urllib3 2.7.0).
+    #     Trivy's [sbom] analyzer imports those components as if they were
+    #     installed, producing HIGH findings for versions that are not in the
+    #     image. The file is dead weight at runtime; delete it.
     find /opt/venv/lib/python3.12/site-packages/setuptools/_vendor \
-        -type d -name '*.dist-info' -exec rm -rf {} +
+        -type d -name '*.dist-info' -exec rm -rf {} + && \
+    find /opt/venv/lib/python3.12/site-packages \
+        -path '*/pip/_vendor/bom.cdx.json' -delete
 
 # ---------------------------------------------------------------
 # Runtime stage: minimal image, non-root user
@@ -51,11 +60,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # HIGH,CRITICAL Trivy gate (requirements.txt covers the /opt/venv copy).
 RUN /usr/local/bin/python3.12 -m pip install --no-cache-dir \
     --root-user-action=ignore -U 'setuptools==78.1.1' && \
-    # Same vendored-metadata cleanup as the builder stage: the copy of
-    # setuptools under /usr/local also embeds *_vendor/*.dist-info metadata
-    # the Trivy gate would flag as HIGH (and pip cannot upgrade).
+    # Same cleanups as the builder stage: the copy of setuptools under
+    # /usr/local also embeds *_vendor/*.dist-info metadata, and the base
+    # image's pip ships the stale _vendor/bom.cdx.json SBOM. Both feed the
+    # Trivy gate phantom HIGH findings for packages that are not installed.
     find /usr/local/lib/python3.12/site-packages/setuptools/_vendor \
-        -type d -name '*.dist-info' -exec rm -rf {} +
+        -type d -name '*.dist-info' -exec rm -rf {} + && \
+    find /usr/local/lib/python3.12/site-packages \
+        -path '*/pip/_vendor/bom.cdx.json' -delete
 
 # Create a non-root user to run the app (CVE hardening best practice).
 RUN groupadd --gid 10001 app && \
