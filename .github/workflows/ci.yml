@@ -148,28 +148,18 @@ jobs:
           '
 
       # TEMP DEBUG: dump each Trivy finding's exact source file (Target).
-      - name: Dump Trivy finding sources (of the reported high findings)
+      - name: Probe both pythons' installed list inside the image
         env:
           IMAGE_NAME: ${{ steps.image-name.outputs.name }}
         run: |
-          trivy image --quiet --severity HIGH,CRITICAL --ignore-unfixed \
-            --format json --timeout 5m \
-            "${IMAGE_NAME}:${{ github.sha }}" \
-            > /tmp/trivy.json || true
-          python3 - <<'PY'
-          import json
-          data = json.load(open("/tmp/trivy.json"))
-          seen = set()
-          for r in data.get("Results", []):
-              for v in r.get("Vulnerabilities", []):
-                  key = (r.get("Target"), v["VulnerabilityID"])
-                  if key in seen:
-                      continue
-                  seen.add(key)
-                  print(r.get("Target"), "->", v.get("PkgName"),
-                        v.get("InstalledVersion"), "fixed",
-                        v.get("FixedVersion"))
-          PY
+          docker run --rm --entrypoint sh "${IMAGE_NAME}:${{ github.sha }}" -euc '
+            echo "== /usr/local python pip list =="
+            /usr/local/bin/python3.12 -m pip list 2>/dev/null || true
+            echo "== /opt/venv pip list =="
+            /opt/venv/bin/pip list 2>/dev/null || true
+            echo "== grep Name: msgpack/urllib3/setuptools across /usr and /opt =="
+            grep -rlE "^(Name: (msgpack|urllib3|setuptools)| 1\.1\.2| 2\.7\.0| 70\.3\.0)" /usr /opt 2>/dev/null | head -30 || true
+          '
 
       - name: Run Trivy vulnerability scanner (gates the push)
         uses: aquasecurity/trivy-action@v0.35.0
