@@ -5,71 +5,58 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: [main]
-  workflow_dispatch:
+
+# Serialize deploys: never cancel a deploy that is already in flight just
+# because a newer commit arrived (Render is already building the older one;
+# cancelling here would only report a false failure for a deploy that still
+# happens). New deploys queue behind the current one.
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Deploy to Kubernetes (Helm)
+  deploy-render:
+    name: Deploy to Render
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     environment: production
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-      EKS_CLUSTER: ${{ vars.EKS_CLUSTER_NAME || 'devops-rag-cluster' }}
-      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'devops-rag' }}
-      # On workflow_run, github.sha is the CD workflow's own SHA, not the commit
-      # CI built an image from. Use the triggering run's head_sha, and fall back
-      # to github.sha for manual dispatch.
-      IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
+      # Override via Settings > Variables if the service URL ever changes.
+      RENDER_SERVICE_URL: ${{ vars.RENDER_SERVICE_URL || 'https://devops-rag-assistant.onrender.com' }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-
-      - name: Configure kubeconfig for EKS
-        run: |
-          aws eks update-kubeconfig \
-            --region "$AWS_REGION" \
-            --name "$EKS_CLUSTER"
-
-      # No AI API key is required. ANTHROPIC_API_KEY is optional: leave the repo
-      # secret unset and the app serves extractive answers from retrieved
-      # context. ADMIN_API_KEY gates POST /ingest and GET /metrics and should be
-      # set for any internet-reachable deployment.
-      - name: Deploy with Helm
+      - name: Trigger Render deploy hook
         env:
-          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
-          helm upgrade --install devops-rag helm/devops-rag-assistant \
-            --namespace "$K8S_NAMESPACE" --create-namespace \
-            --values helm/devops-rag-assistant/values-production.yaml \
-            --set image.tag="$IMAGE_TAG" \
-            --set secrets.adminApiKey="$ADMIN_API_KEY" \
-            --set secrets.anthropicApiKey="$ANTHROPIC_API_KEY" \
-            --wait --timeout 5m
+          set -euo pipefail
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK secret is not set. Add it under"
+            echo "::error::Settings > Secrets and variables > Actions, then re-run this job."
+            exit 1
+          fi
+          # Render's deploy hook returns HTTP 200 as soon as the deploy is
+          # accepted. Never echo the hook URL: it embeds the deploy key.
+          status="$(curl -sS -o /tmp/render_hook.out -w '%{http_code}' -X POST "$RENDER_DEPLOY_HOOK")"
+          echo "Render deploy hook accepted (HTTP ${status})."
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            cat /tmp/render_hook.out
+            exit 1
+          fi
 
-      - name: Verify deployment
+      - name: Wait for service to become ready
         run: |
-          kubectl rollout status deployment/devops-rag-assistant \
-            -n "$K8S_NAMESPACE" --timeout=2m
-          kubectl get pods -n "$K8S_NAMESPACE" -l app=devops-rag-assistant
-
-      - name: Verify the service answers
-        run: |
-          kubectl run smoke --rm -i --restart=Never \
-            -n "$K8S_NAMESPACE" --image=curlimages/curl:latest --quiet -- \
-            sh -c 'until curl -fsS http://devops-rag-assistant/api/v1/ready; do
-                     echo "waiting for readiness..."; sleep 3;
-                   done; echo'
+          set -euo pipefail
+          echo -n "Waiting for ${RENDER_SERVICE_URL}/api/v1/ready"
+          for i in $(seq 1 120); do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+              "$RENDER_SERVICE_URL/api/v1/ready" || true)"
+            if [ "$code" = "200" ]; then
+              echo " service is ready (attempt $i)."
+              exit 0
+            fi
+            printf '.'
+            sleep 5
+          done
+          echo
+          echo "Service did not report ready within 10 minutes."
+          exit 1
