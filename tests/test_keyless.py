@@ -51,12 +51,14 @@ def test_generate_answer_works_without_any_api_key(monkeypatch):
     assert "kubernetes" in out["answer"].lower()
 
 
-def test_keyless_answer_reports_extractive_mode(monkeypatch):
+def test_keyless_answer_uses_neutral_matching_notes_heading(monkeypatch):
     client.post("/api/v1/ingest")
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "")
 
     out = generate_answer("How do Docker volumes work?", k=1)
-    assert "ANTHROPIC_API_KEY" in out["answer"]
+    assert out["answer"].startswith("Matching notes:")
+    # The missing-key detail is logged server-side, never shown to visitors.
+    assert "ANTHROPIC_API_KEY" not in out["answer"]
 
 
 def test_ask_endpoint_succeeds_keyless(monkeypatch):

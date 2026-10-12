@@ -164,15 +164,14 @@ def generate_answer(query: str, k: int | None = None) -> dict:
         answer = response.content
     else:
         if not _keyless_notice_logged:
+            # Server-side only: visitors never see implementation details like
+            # "no API key configured". The answer just shows what matched.
             logger.info(
                 "ANTHROPIC_API_KEY not set - serving extractive answers from "
                 "retrieved context only."
             )
             _keyless_notice_logged = True
-        answer = (
-            "(No ANTHROPIC_API_KEY set, showing retrieved context directly.)\n\n"
-            + context
-        )
+        answer = "Matching notes:\n\n" + context
 
     return {
         "question": query,
