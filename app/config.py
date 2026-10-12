@@ -6,11 +6,14 @@ can be overridden through environment variables (e.g. APP_*_DIR, or the
 documented top-level vars below) following pydantic-settings conventions.
 """
 
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -71,11 +74,30 @@ class Settings(BaseSettings):
     ingest_rate_limit: str = "5/minute"
 
     # --- Security ---------------------------------------------------------
-    # Comma-separated list of allowed CORS origins. "*" allows all.
-    cors_origins: list[str] = ["*"]
+    # Comma-separated list of allowed CORS origins. "*" allows all. Accepts the
+    # JSON-array form (["a", "b"]) and the comma-separated form (a,b) used in
+    # .env files and the Kubernetes/Helm ConfigMaps.
+    cors_origins: Annotated[list[str], NoDecode] = ["*"]
     # Shared secret required to call /ingest and to read /metrics. Leave empty
     # to disable auth (not recommended for production).
     admin_api_key: str = ""
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, value: object) -> object:
+        """Accept a JSON array or a plain/comma-separated origin list.
+
+        pydantic-settings only JSON-decodes complex fields, so a plain
+        "https://app.example.com" (or "*") would raise a SettingsError before
+        validation ever runs. Normalise the string forms here instead, while
+        still honouring a pre-parsed list from .env / init kwargs.
+        """
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith("["):
+                return json.loads(text)
+            return [item.strip() for item in text.split(",") if item.strip()]
+        return value
 
     # --- Optional LLM ------------------------------------------------------
     # Optional. When empty the app answers in extractive mode from the

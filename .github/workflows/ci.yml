@@ -181,7 +181,22 @@ jobs:
 
       - name: Wait for the Deployment to become Ready
         run: |
-          kubectl -n devops-rag rollout status deployment/devops-rag-assistant --timeout=240s
+          kubectl -n devops-rag get pods -o wide
+          if ! kubectl -n devops-rag rollout status deployment/devops-rag-assistant --timeout=240s; then
+            echo "::group::why the rollout did not finish"
+            kubectl -n devops-rag get pods -o wide
+            kubectl -n devops-rag get events --sort-by=.lastTimestamp | tail -40
+            for pod in $(kubectl -n devops-rag get pods -o name); do
+              echo "--- describe $pod ---"
+              kubectl -n devops-rag describe "$pod" || true
+              echo "--- logs $pod ---"
+              kubectl -n devops-rag logs "$pod" --all-containers --tail=100 || true
+              echo "--- previous logs $pod ---"
+              kubectl -n devops-rag logs "$pod" --all-containers --previous --tail=100 || true
+            done
+            echo "::endgroup::"
+            exit 1
+          fi
           kubectl -n devops-rag get pods -o wide
 
       - name: Prove the app answers through the Service
