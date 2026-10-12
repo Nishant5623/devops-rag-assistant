@@ -22,10 +22,20 @@ spec:
         runAsNonRoot: true
         runAsUser: 10001
         fsGroup: 10001
+        # Required by the namespace's pod-security "restricted" policy.
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: app
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # The namespace enforces the restricted Pod Security Standard, which
+          # rejects pods that allow privilege escalation or keep capabilities.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: 8000
               name: http

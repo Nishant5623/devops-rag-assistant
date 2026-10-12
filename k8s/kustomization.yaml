@@ -1,6 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Without this, every resource below lands in whatever namespace kubectl is
+# pointed at (usually "default"), while namespace.yml only creates an empty
+# "devops-rag" namespace. Setting it here puts the whole app in that namespace.
+namespace: devops-rag
+
 resources:
   - namespace.yml
   - serviceaccount.yml
