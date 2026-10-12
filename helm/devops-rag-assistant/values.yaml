@@ -10,6 +10,15 @@ image:
 
 namespace: devops-rag
 
+# Render the Namespace object as part of the release. Keep this false when the
+# namespace already exists: Helm stores its release metadata in that namespace,
+# so it must exist before install, and a chart cannot re-create a namespace it
+# does not own (that fails with "already exists"). Set it true only when the
+# release lives somewhere else, e.g.
+#   helm install rag helm/devops-rag-assistant --namespace helm-meta \
+#     --set namespace=devops-rag --set namespaceCreate=true --create-namespace
+namespaceCreate: false
+
 serviceAccount:
   name: devops-rag-assistant
 

@@ -1,5 +1,9 @@
 # Example production values. The app runs with NO AI API key in extractive
-# mode, so secrets.anthropicApiKey can stay empty. Apply with:
+# mode, so secrets.anthropicApiKey can stay empty. The release namespace must
+# exist first (the chart only creates it when namespaceCreate=true), and it is
+# what enforces the restricted Pod Security Standard, so label it too:
+#   kubectl create namespace devops-rag
+#   kubectl label namespace devops-rag pod-security.kubernetes.io/enforce=restricted
 #   helm upgrade --install devops-rag helm/devops-rag-assistant \
 #     --namespace devops-rag \
 #     --values helm/devops-rag-assistant/values-production.yaml \

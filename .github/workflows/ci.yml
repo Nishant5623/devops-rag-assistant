@@ -215,6 +215,27 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{"question": "What is a Kubernetes Deployment?", "k": 2}'
 
+      - name: Install the Helm chart into a second namespace
+        # Proves the chart actually installs, not just renders. The namespace is
+        # created and labelled first: Helm stores its release metadata in it, and
+        # the chart only creates it itself when namespaceCreate=true.
+        run: |
+          set -euo pipefail
+          kubectl create namespace devops-rag-helm
+          kubectl label namespace devops-rag-helm pod-security.kubernetes.io/enforce=restricted
+          helm install rag helm/devops-rag-assistant \
+            --namespace devops-rag-helm \
+            --set namespace=devops-rag-helm \
+            --wait --timeout 180s
+          kubectl -n devops-rag-helm get pods -o wide
+          kubectl -n devops-rag-helm port-forward svc/devops-rag-assistant 18081:80 >/tmp/pf-helm.log 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18081/api/v1/ready >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          echo "helm-ready: $(curl -fsS http://127.0.0.1:18081/api/v1/ready)"
+          helm status rag -n devops-rag-helm | head -6
+
   docker:
     name: Build, scan & push image
     runs-on: ubuntu-latest

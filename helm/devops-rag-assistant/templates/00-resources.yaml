@@ -1,3 +1,4 @@
+{{- if .Values.namespaceCreate }}
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -7,6 +8,7 @@ metadata:
     # so a pod that does not meet it is rejected at admission.
     pod-security.kubernetes.io/enforce: restricted
 ---
+{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
