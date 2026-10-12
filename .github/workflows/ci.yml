@@ -102,6 +102,12 @@ jobs:
         id: image-name
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Compute build timestamp
+        # Stamped into the image (BUILD_TIME build arg) and reported on /health,
+        # so an operator can tell exactly which artifact is live.
+        id: build-time
+        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       # ONE build, loaded into the local Docker daemon. It is not pushed yet:
       # the image Trivy scans below is exactly this locally-loaded image, and
       # the push step below pushes that same image object. There is no second
@@ -115,6 +121,7 @@ jobs:
           push: false
           build-args: |
             GIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ steps.build-time.outputs.value }}
           tags: |
             ${{ steps.image-name.outputs.name }}:${{ github.sha }}
             ${{ steps.image-name.outputs.name }}:latest
@@ -160,13 +167,13 @@ jobs:
           cid="$(docker run -d -e PORT=8000 -p 18000:8000 "${IMAGE_NAME}:${{ github.sha }}")"
           ok=0
           for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:18000/api/v1/health >/dev/null 2>&1; then ok=1; break; fi
+            if curl -fsS http://127.0.0.1:18000/api/v1/live >/dev/null 2>&1; then ok=1; break; fi
             sleep 2
           done
           docker logs "$cid" || true
           docker rm -f "$cid" >/dev/null 2>&1 || true
           if [ "$ok" != "1" ]; then echo "::error::Container did not become healthy"; exit 1; fi
-          echo "::notice::Container served /api/v1/health OK without pip/setuptools/wheel"
+          echo "::notice::Container served /api/v1/live OK without pip/setuptools/wheel"
 
       # Pushes the SAME local image object Trivy scanned. The guard asserts the
       # tag still resolves to the exact scanned image ID, so a rebuild between

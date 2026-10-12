@@ -38,6 +38,10 @@ FROM python:3.12-slim AS runtime
 # falls back to Render's RENDER_GIT_COMMIT env var at runtime. See config.py.
 ARG GIT_SHA=dev
 
+# UTC timestamp of the build, injected by CI. Reported on /health alongside the
+# commit so an operator can tell exactly which artifact is live.
+ARG BUILD_TIME=unknown
+
 # NOTE: the app reads the ENV variable (see app/config.py). Setting APP_ENV
 # here would silently leave the container in development mode, which disables
 # JSON logging and HSTS.
@@ -47,7 +51,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ENV=production \
     ANONYMIZED_TELEMETRY=False \
     AUTO_INGEST=True \
-    GIT_SHA=${GIT_SHA}
+    GIT_SHA=${GIT_SHA} \
+    BUILD_TIME=${BUILD_TIME}
 
 # Pull in all pending OS security updates at build time (e.g. liblzma5,
 # DSA-6549-1). The floating python:3.12-slim base tag can lag its own repos,
@@ -92,12 +97,14 @@ USER app
 
 EXPOSE 8000
 
-# Liveness only checks that the process serves HTTP. Readiness is a separate
-# endpoint (/api/v1/ready) that returns 503 until the index is queryable, so a
-# replica with an empty index is pulled from the load balancer, not restarted.
+# Liveness only checks that the process serves HTTP. Use /api/v1/live, which is
+# index-agnostic: /api/v1/health returns 503 when the index is not loaded, so
+# pointing the container healthcheck at it would mark a merely-unindexed
+# container unhealthy. Readiness is /api/v1/ready, which keeps traffic off a
+# replica whose index is not queryable yet.
 # Reads PORT so this stays correct when a platform overrides the listen port.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/api/v1/health', timeout=3)"
+  CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/api/v1/live', timeout=3)"
 
 # Single worker per container on purpose: /metrics is served from an in-process
 # Prometheus registry, so multiple workers would report partial metrics. Scale

@@ -60,10 +60,11 @@ def test_pulls_the_public_ghcr_image(service: dict) -> None:
 
 
 def test_health_check_path_is_a_real_route(service: dict) -> None:
-    """The health check must be the readiness route, not liveness.
+    """Render must gate traffic on readiness, not on liveness.
 
-    /api/v1/health returns 200 even with no index, so using it would let
-    Render route traffic to a replica that cannot answer questions.
+    /api/v1/live is always 200, so using it as the health check would let
+    Render route traffic to a replica that cannot answer questions. Readiness
+    (/api/v1/ready) returns 503 until the vector index is queryable.
     """
     assert service["healthCheckPath"] == "/api/v1/ready"
 
@@ -109,6 +110,21 @@ def test_dockerfile_copies_and_execs_the_entrypoint() -> None:
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     assert "COPY docker-entrypoint.sh" in dockerfile
     assert "chmod +x /usr/local/bin/docker-entrypoint.sh" in dockerfile
+
+
+def test_docker_healthcheck_uses_index_agnostic_liveness() -> None:
+    """The container healthcheck must not 503 while the index is building.
+
+    /api/v1/health returns 503 when the index is not loaded, so pointing the
+    Docker HEALTHCHECK at it would mark a merely-unindexed container unhealthy.
+    It targets /api/v1/live, which is always 200.
+    """
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    healthcheck_line = next(
+        line for line in dockerfile.splitlines() if "urllib.request.urlopen" in line
+    )
+    assert "/api/v1/live" in healthcheck_line
+    assert "/api/v1/health" not in healthcheck_line
 
 
 # --- Proxy / rate limiting -------------------------------------------------

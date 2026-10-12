@@ -146,16 +146,30 @@ class AskRequest(BaseModel):
 api = APIRouter(prefix=settings.api_prefix)
 
 
+@api.get("/live")
+def live() -> dict:
+    """Liveness probe: the process is up and serving HTTP.
+
+    Deliberately index-agnostic so Kubernetes never restart-loops a pod that is
+    merely waiting on (or rebuilding) its index. Use /health for the richer,
+    index-aware status and /ready to gate traffic."""
+    return {"status": "alive", "version": settings.app_version}
+
+
 @api.get("/health")
-def health() -> dict:
-    """Liveness probe. Reports process health only, so it must stay 200 even
-    when the index is missing - otherwise Kubernetes restarts a pod that is
-    merely waiting on (or needs) ingestion."""
+def health(response: Response) -> dict:
+    """Health/status probe. Reports the exact build (commit + build time) and
+    returns 503 when the vector index is not loaded, so monitoring sees a
+    genuinely degraded service instead of an unconditional "ok"."""
+    loaded = index_available()
+    if not loaded:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {
-        "status": "ok",
-        "index_loaded": index_available(),
+        "status": "ok" if loaded else "unavailable",
+        "index_loaded": loaded,
         "version": settings.app_version,
         "sha": settings.resolved_git_sha,
+        "build_time": settings.build_time,
     }
 
 
@@ -222,9 +236,15 @@ def api_root() -> dict:
 # Friendly non-versioned aliases linked from the chat footer. Registered before
 # the static mount at "/" so they are never shadowed by StaticFiles.
 @app.get("/health", include_in_schema=False)
-def health_root() -> dict:
+def health_root(response: Response) -> dict:
     """Alias for /api/v1/health, linked from the chat frontend."""
-    return health()
+    return health(response)
+
+
+@app.get("/live", include_in_schema=False)
+def live_root() -> dict:
+    """Alias for /api/v1/live."""
+    return live()
 
 
 # --- Static frontend (mounted last so it does not shadow API routes) ------

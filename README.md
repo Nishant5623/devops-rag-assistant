@@ -25,7 +25,7 @@ Linux, CI/CD, Ansible).
 - **Prometheus metrics** + **Grafana dashboard** + alerting rules
 - **Structured JSON logging** and **OpenTelemetry tracing** (optional collector)
 - **Request-ID correlation** and hardened **security headers**
-- **Separate liveness/readiness probes** so an unindexed pod is never sent traffic
+- **Liveness/health/readiness probes** — an unindexed pod is never sent traffic, and `/health` reports the live commit SHA and build time
 - **Optional admin API-key** auth for protected endpoints (`/ingest`, `/metrics`)
 - **Multi-stage, non-root Docker image** with healthcheck
 - **CI/CD** via GitHub Actions (lint → type-check → test → build → scan → deploy)
@@ -58,11 +58,12 @@ Linux, CI/CD, Ansible).
 | Method | Path      | Description                                              |
 |--------|-----------|----------------------------------------------------------|
 | GET    | `/`         | Single-page chat frontend (static files)               |
-| GET    | `/api/v1/health` | Liveness: process is up (always 200)             |
+| GET    | `/api/v1/live`   | Liveness: process is up (**always 200**)           |
+| GET    | `/api/v1/health` | Status: commit SHA + build time (**503 until index loaded**) |
 | GET    | `/api/v1/ready`  | Readiness: **503 until the index is queryable**    |
 | POST   | `/api/v1/ingest` | (Re)build the vector index from `data/` (admin)   |
 | POST   | `/api/v1/ask`    | `{"question": "...", "k": 3}` → answer + `found` + cited chunks |
-| GET    | `/metrics` | Prometheus metrics                                     |
+| GET    | `/metrics` | Prometheus metrics (**admin**: `X-Admin-Key`)          |
 | GET    | `/docs`    | Interactive OpenAPI / Swagger UI                       |
 
 - `POST /ask` is rate-limited (default **10/min/IP**).
@@ -75,11 +76,15 @@ Linux, CI/CD, Ansible).
   guesses. When `found: true`, each `sources` entry carries the retrieved
   `text` chunk, `source` file, and `distance`; the chat UI shows every chunk
   used to form the answer.
-- `/health` (root) is an alias of `/api/v1/health`, linked from the chat
-  footer alongside `/metrics` and `/docs`.
-- `/health` vs `/ready`: liveness stays 200 so Kubernetes never restart-loops a
-  pod that simply has no index yet, while `/ready` returns 503 so an unusable
-  replica is pulled out of the load balancer instead of serving 400s.
+- `/health` (root) and `/live` (root) are aliases of `/api/v1/health` and
+  `/api/v1/live`, linked from the chat footer alongside `/docs`. `/metrics`
+  is **not** linked publicly because it requires the `X-Admin-Key` header.
+- Three probes, three jobs. `/live` is pure liveness and always returns 200, so
+  Kubernetes never restart-loops a pod that simply has no index yet. `/health`
+  reports the exact artifact (`sha` + `build_time`) and returns 503 when the
+  index is not loaded, so monitoring sees a genuinely degraded service.
+  `/ready` returns 503 until the index is queryable, so an unusable replica is
+  pulled out of the load balancer instead of serving 400s.
 
 ## 🚀 Quick Start (keyless)
 

@@ -50,8 +50,10 @@ def test_redoc_has_exactly_one_looser_csp_header():
 
 
 def test_app_pages_keep_the_strict_csp():
+    # /api/v1/health returns 503 when the index is not loaded and 200 otherwise;
+    # either way the strict CSP header must be present.
     resp = _get("/api/v1/health")
-    assert resp.status_code == 200
+    assert resp.status_code in (200, 503)
     csp = _csp_values(resp)
     assert len(csp) == 1, f"expected exactly one CSP header, got {csp!r}"
     strict = csp[0]

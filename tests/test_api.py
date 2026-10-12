@@ -33,6 +33,19 @@ def test_health_root_alias_reports_sha():
     assert "sha" in resp.json()
 
 
+def test_health_reports_build_time():
+    """build_time is exposed so an operator can identify the exact artifact."""
+    resp = client.get("/api/v1/health")
+    assert resp.status_code == 200
+    assert "build_time" in resp.json()
+
+
+def test_live_endpoint_reports_alive():
+    resp = client.get("/api/v1/live")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "alive"
+
+
 def test_ingest_then_ask_returns_sources():
     ingest_resp = client.post("/api/v1/ingest")
     assert ingest_resp.status_code == 200
@@ -103,3 +116,15 @@ def test_metrics_endpoint_present():
     resp = client.get("/metrics")
     assert resp.status_code == 200
     assert "http_requests_total" in resp.text
+
+
+def test_metrics_exposes_counters_and_latency_histogram():
+    """After real traffic, /metrics reports request counters and a latency
+    histogram (with buckets), which is what the Grafana dashboards consume."""
+    client.get("/api/v1/live")  # generate at least one instrumented request
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "http_requests_total" in body
+    assert "http_request_duration_seconds" in body
+    assert "http_request_duration_seconds_bucket" in body

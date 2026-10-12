@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # GIT_SHA build arg (CI passes github.sha). Kept a plain field so the
     # Dockerfile default below is a sentinel for "built outside CI".
     git_sha: str = "dev"
+    # UTC timestamp of the image build, set via the Dockerfile's BUILD_TIME
+    # build arg (CI passes the workflow's start time). Reported on /health so
+    # an operator can tell exactly which artifact is live, not just which
+    # commit. "unknown" outside CI.
+    build_time: str = "unknown"
     # Bind to all interfaces so the container can accept external traffic.
     host: str = "0.0.0.0"  # noqa: S104
     port: int = 8000

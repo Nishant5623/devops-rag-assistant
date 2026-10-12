@@ -39,8 +39,11 @@ spec:
               cpu: 500m
               memory: 768Mi
           livenessProbe:
+            # Pure liveness: /api/v1/live is index-agnostic and always 200, so a
+            # pod is never restarted merely because the index is rebuilding.
+            # /api/v1/health returns 503 when the index is not loaded.
             httpGet:
-              path: /api/v1/health
+              path: /api/v1/live
               port: 8000
             periodSeconds: 30
             timeoutSeconds: 5
@@ -54,8 +57,9 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
-          # The app re-ingests on startup, so give it room to build the index
-          # before the liveness probe starts judging it.
+          # The app re-ingests on startup and /api/v1/health returns 503 until
+          # that index is loaded, so startupProbe gates the pod on a usable
+          # index (and restarts it if ingestion never succeeds).
           startupProbe:
             httpGet:
               path: /api/v1/health

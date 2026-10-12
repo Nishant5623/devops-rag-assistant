@@ -44,12 +44,20 @@ def test_ready_returns_503_when_index_missing(empty_index):
     assert body["index_loaded"] is False
 
 
-def test_health_stays_200_when_index_missing(empty_index):
-    """Liveness must not flap on a missing index, or Kubernetes restart-loops."""
+def test_health_returns_503_when_index_missing(empty_index):
+    """A missing index is a degraded state: /health must say so, not 200."""
     resp = client.get("/api/v1/health")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["status"] == "unavailable"
+    assert body["index_loaded"] is False
+
+
+def test_live_stays_200_when_index_missing(empty_index):
+    """Liveness must not flap on a missing index, or Kubernetes restart-loops."""
+    resp = client.get("/api/v1/live")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
-    assert resp.json()["index_loaded"] is False
+    assert resp.json()["status"] == "alive"
 
 
 def test_ensure_index_rebuilds_missing_index(empty_index):
