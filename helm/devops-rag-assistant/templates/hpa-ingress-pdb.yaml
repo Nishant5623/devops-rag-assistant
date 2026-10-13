@@ -1,4 +1,6 @@
 {{- if .Values.autoscaling.enabled }}
+# Defined and schema-validated in CI, but NOT exercised: the kind job has no
+# metrics-server, so this HPA would report <unknown> CPU targets and never scale.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -26,6 +28,8 @@ spec:
 {{- end }}
 ---
 {{- if .Values.ingress.enabled }}
+# Defined and schema-validated in CI, but NOT exercised end to end: the kind job
+# has no ingress controller or TLS secret, so rag.example.com is never served.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

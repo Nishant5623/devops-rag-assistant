@@ -2,6 +2,9 @@ apiVersion: 1
 
 datasources:
   - name: Prometheus
+    # Fixed UID so the provisioned dashboard panels can reference it directly
+    # (the dashboard JSON uses "uid": "prometheus", not a template variable).
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090

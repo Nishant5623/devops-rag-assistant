@@ -45,12 +45,16 @@ resources:
     cpu: 500m
     memory: 768Mi
 
+# Rendered and schema-validated in CI, but not exercised: the CI kind cluster
+# has no metrics-server, so the HPA never receives CPU readings.
 autoscaling:
   enabled: true
   minReplicas: 2
   maxReplicas: 8
   targetCPUUtilizationPercentage: 70
 
+# Rendered and schema-validated in CI, but not exercised end to end: no ingress
+# controller or TLS certificate is installed, so the host is illustrative.
 ingress:
   enabled: true
   host: rag.example.com

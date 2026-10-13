@@ -1,3 +1,6 @@
+# Defined and schema-validated in CI, but NOT exercised: the kind job does not
+# install metrics-server, so this HPA can never read CPU (targets show
+# <unknown>). It is applied to the cluster but never actually scales anything.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

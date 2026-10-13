@@ -148,7 +148,7 @@ jobs:
   kind:
     name: Kind (apply manifests, wait for readiness)
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -158,23 +158,25 @@ jobs:
           cluster_name: ci
           node_image: kindest/node:v1.30.0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build the image (loaded into the local daemon)
-        uses: docker/build-push-action@v6
+      - name: Download the image the docker job built and scanned
+        uses: actions/download-artifact@v4
         with:
-          context: .
-          load: true
-          push: false
-          build-args: |
-            GIT_SHA=${{ github.sha }}
-          tags: ghcr.io/nishant5623/devops-rag-assistant:latest
-          cache-from: type=gha,scope=build-${{ hashFiles('requirements.txt', 'Dockerfile') }}
-          cache-to: type=gha,scope=build-${{ hashFiles('requirements.txt', 'Dockerfile') }},mode=max
+          name: app-image
 
-      - name: Load the image into kind
-        run: kind load docker-image ghcr.io/nishant5623/devops-rag-assistant:latest --name ci
+      - name: Load the scanned image into Docker and kind
+        # The exact image the docker job built, Trivy-scanned and smoke tested:
+        # it is downloaded and loaded, never rebuilt, so the cluster runs the
+        # bytes that passed the gate. The :latest tag is added because the
+        # manifests reference it and imagePullPolicy: IfNotPresent would
+        # otherwise try to pull from GHCR.
+        run: |
+          set -euo pipefail
+          gunzip -c app-image.tar.gz | docker load
+          docker tag "ghcr.io/nishant5623/devops-rag-assistant:${GITHUB_SHA}" \
+            ghcr.io/nishant5623/devops-rag-assistant:latest
+          kind load docker-image ghcr.io/nishant5623/devops-rag-assistant:latest --name ci
+          docker inspect --format 'kind image ID: {{.Id}}' \
+            ghcr.io/nishant5623/devops-rag-assistant:latest
 
       - name: Apply the kustomize manifests
         run: kubectl apply -k k8s
@@ -237,10 +239,12 @@ jobs:
           helm status rag -n devops-rag-helm | head -6
 
   docker:
-    name: Build, scan & push image
+    name: Build & scan image (push on main)
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Runs on every push and PR so the kind and monitoring jobs can reuse ONE
+    # built-and-scanned image instead of rebuilding it. The GHCR login, push and
+    # byte-identity verification steps below are main-only.
     permissions:
       contents: read
       packages: write
@@ -251,6 +255,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -338,6 +343,7 @@ jobs:
       # tag still resolves to the exact scanned image ID, so a rebuild between
       # scan and push is impossible by construction.
       - name: Push the scanned image to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           IMAGE_NAME: ${{ steps.image-name.outputs.name }}
         run: |
@@ -355,6 +361,7 @@ jobs:
       # manifest GHCR now serves for tag <sha> must equal the scanned image ID
       # recorded above. Proves malware cannot have been swapped in registry-side.
       - name: Verify GHCR tag is byte-identical to the scanned image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           IMAGE_NAME: ${{ steps.image-name.outputs.name }}
         run: |
@@ -398,3 +405,124 @@ jobs:
               raise SystemExit(1)
           print("Verified: image in GHCR is byte-identical to the one Trivy scanned.")
           PY
+
+      - name: Save the scanned image for the kind and monitoring jobs
+        env:
+          IMAGE_NAME: ${{ steps.image-name.outputs.name }}
+        run: |
+          set -euo pipefail
+          docker save "${IMAGE_NAME}:${{ github.sha }}" | gzip > app-image.tar.gz
+          ls -lh app-image.tar.gz
+
+      - name: Upload the scanned image as an artifact
+        # ~245 MiB compressed. The kind and monitoring jobs load this exact
+        # image instead of building it again, so there is one build per run.
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-image
+          path: app-image.tar.gz
+          retention-days: 1
+          compression-level: 0
+
+  monitoring:
+    name: Observability (compose, Prometheus scrape)
+    runs-on: ubuntu-latest
+    needs: [lint, test, docker]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the image the docker job built and scanned
+        uses: actions/download-artifact@v4
+        with:
+          name: app-image
+
+      - name: Load the scanned image and tag it for compose
+        run: |
+          set -euo pipefail
+          gunzip -c app-image.tar.gz | docker load
+          docker tag "ghcr.io/nishant5623/devops-rag-assistant:${GITHUB_SHA}" \
+            devops-rag-assistant:latest
+
+      - name: Start the stack (app + Prometheus + Grafana)
+        env:
+          ADMIN_API_KEY: dev-admin-key
+        run: docker compose up -d --no-build
+
+      - name: Wait for the app to become ready
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/api/v1/ready >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          echo "ready: $(curl -fsS http://127.0.0.1:8000/api/v1/ready)"
+
+      - name: Prove /metrics rejects a keyless request
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/metrics)
+          echo "GET /metrics without X-Admin-Key -> $code"
+          [ "$code" = "401" ] || { echo "::error::/metrics should be 401 without the admin key"; exit 1; }
+
+      - name: Send some /ask traffic
+        # Not -f: a 429 from the rate limiter is still traffic worth counting.
+        run: |
+          set -euo pipefail
+          for q in "What is a Kubernetes Deployment?" "What does Terraform manage?" "How does the CI pipeline work?"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+              http://127.0.0.1:8000/api/v1/ask \
+              -H 'Content-Type: application/json' \
+              -d "{\"question\": \"$q\", \"k\": 2}")
+            echo "POST /api/v1/ask -> $code"
+          done
+
+      - name: Assert Prometheus reports the app target up
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            up=$(curl -fsS --data-urlencode 'query=up{job="devops-rag"}' \
+              http://127.0.0.1:9090/api/v1/query \
+              | jq -r '.data.result[0].value[1] // empty')
+            if [ "$up" = "1" ]; then echo "Prometheus target is up"; exit 0; fi
+            sleep 2
+          done
+          echo "::error::Prometheus never reported the app target as up"
+          curl -fsS http://127.0.0.1:9090/api/v1/targets \
+            | jq '.data.activeTargets[] | {scrapeUrl, health, lastError}'
+          exit 1
+
+      - name: Assert the request counter increases after more traffic
+        run: |
+          set -euo pipefail
+          query='sum(http_requests_total{job="devops-rag"})'
+          before=$(curl -fsS --data-urlencode "query=$query" \
+            http://127.0.0.1:9090/api/v1/query | jq -r '.data.result[0].value[1]')
+          echo "before: $before"
+          for _ in $(seq 1 5); do
+            curl -s -o /dev/null -X POST http://127.0.0.1:8000/api/v1/ask \
+              -H 'Content-Type: application/json' \
+              -d '{"question": "What is a Kubernetes Deployment?", "k": 2}'
+          done
+          # The scrape interval is 15s: wait one full cycle plus margin.
+          sleep 20
+          after=$(curl -fsS --data-urlencode "query=$query" \
+            http://127.0.0.1:9090/api/v1/query | jq -r '.data.result[0].value[1]')
+          echo "after:  $after"
+          python3 -c "import sys; b=float('$before'); a=float('$after'); print(f'{b} -> {a}'); sys.exit(0 if a > b else 1)" \
+            || { echo "::error::Prometheus counter did not increase"; exit 1; }
+
+      - name: Confirm Grafana provisioned the dashboard
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/api/health | jq .
+          curl -fsS -u admin:admin \
+            http://127.0.0.1:3000/api/dashboards/uid/devops-rag-assistant \
+            | jq -r '.dashboard.title'
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=200

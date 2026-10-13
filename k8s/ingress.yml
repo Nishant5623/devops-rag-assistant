@@ -1,3 +1,6 @@
+# Defined and schema-validated in CI, but NOT exercised end to end: the kind job
+# installs no ingress controller and no devops-rag-tls secret, so nothing ever
+# serves rag.example.com. Host and TLS secret are illustrative only.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

@@ -8,6 +8,15 @@ rule_files:
 scrape_configs:
   - job_name: "devops-rag"
     metrics_path: /metrics
+    # /metrics is protected by the app's X-Admin-Key header whenever
+    # ADMIN_API_KEY is set. docker-compose.yml defaults ADMIN_API_KEY to the
+    # same value as the header below, so this scrape authenticates. If you
+    # change one, change the other: Prometheus only expands environment
+    # variables inside external_labels, so this value cannot be ${...}.
+    http_headers:
+      X-Admin-Key:
+        values:
+          - "dev-admin-key"
     static_configs:
       - targets: ["app:8000"]
         labels:

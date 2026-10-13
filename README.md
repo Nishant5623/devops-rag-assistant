@@ -103,8 +103,25 @@ Open **http://localhost:8000/** for the chat UI, or **/docs** for the API UI.
 docker compose up --build
 ```
 - Chat UI: http://localhost:8000/
-- Prometheus: http://localhost:9090/
-- Grafana: http://localhost:3000/ (admin/admin)
+- Prometheus: http://localhost:9090/ (scrapes the app's protected `/metrics`)
+- Grafana: http://localhost:3000/ (admin/admin) — the **DevOps RAG Assistant**
+  dashboard is provisioned automatically
+
+The compose stack defaults `ADMIN_API_KEY` to `dev-admin-key`, and
+`docker/prometheus/prometheus.yml` sends that same value as the `X-Admin-Key`
+header, so the scrape of `/metrics` is authenticated out of the box. A keyless
+`curl http://localhost:8000/metrics` returns **401**. Change both together.
+
+**Capturing a dashboard screenshot for this README:**
+
+1. `docker compose up --build` and wait for the chat UI to answer.
+2. Send a few questions (through the UI, or
+   `curl -X POST localhost:8000/api/v1/ask -H 'Content-Type: application/json' -d '{"question":"What is a Kubernetes Deployment?","k":2}'`)
+   then wait ~30s for two Prometheus scrapes so the panels have data.
+3. Open Grafana → **Dashboards → DevOps RAG Assistant**. It shows request rate,
+   p95 latency, error ratios and memory.
+4. Screenshot the browser, save it by hand as e.g. `docs/dashboard.png` (CI does
+   not produce it), and add `![Grafana dashboard](docs/dashboard.png)` here.
 
 **Standalone Docker:**
 
@@ -206,6 +223,12 @@ The chart deploys a Deployment (with startup/liveness/readiness probes), Service
 ConfigMap, Secret, HorizontalPodAutoscaler, Ingress, and PodDisruptionBudget —
 all running as a **non-root** user.
 
+> **Defined but not exercised in CI:** the Ingress (host `rag.example.com`, TLS
+> secret `devops-rag-tls`) and the HorizontalPodAutoscaler are rendered and
+> schema-validated by `kubeconform`, and applied to the throwaway cluster, but CI
+> installs no ingress controller, no TLS certificate and no metrics-server.
+> Nothing serves that host and the HPA never scales — treat both as illustrative.
+
 > **How the index reaches the pod:** the Docker image bakes a prebuilt index in at
 > build time, but the chart mounts an `emptyDir` over `/app/chroma_store`, which
 > hides it. The app therefore re-ingests on startup when the index is missing
@@ -251,7 +274,8 @@ Set via environment variables or a `.env` file (see `.env.example`):
 
 > Scale with **replicas**, not uvicorn workers. `/metrics` is served from an
 > in-process Prometheus registry, so multiple workers in one container would each
-> report partial metrics. Use the HPA (`autoscaling` in the Helm values) instead.
+> report partial metrics. Use the HPA (`autoscaling` in the Helm values) instead
+> (defined, but not exercised in CI — no metrics-server is installed).
 
 ## 🔐 Before you expose this to a network
 

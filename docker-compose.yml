@@ -18,9 +18,11 @@ services:
       # straight from the retrieved context (extractive mode).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
-      # Empty disables auth on /ingest and /metrics. Set a real value before
-      # exposing this stack beyond your workstation.
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      # /ingest and /metrics require this header (X-Admin-Key). The default is
+      # a known development value that matches docker/prometheus/prometheus.yml
+      # so Prometheus can scrape /metrics out of the box; set a real secret
+      # here AND in the Prometheus scrape config before exposing this stack.
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
       ANONYMIZED_TELEMETRY: "False"
     volumes:
       - rag_data:/app/chroma_store
@@ -32,7 +34,9 @@ services:
       start_period: 15s
 
   prometheus:
-    image: prom/prometheus:v2.53.0
+    # >= 2.55.0 is required for `http_headers` in the scrape config (the
+    # X-Admin-Key sent to the app's protected /metrics endpoint).
+    image: prom/prometheus:v3.5.0
     container_name: rag-prometheus
     restart: unless-stopped
     ports:
