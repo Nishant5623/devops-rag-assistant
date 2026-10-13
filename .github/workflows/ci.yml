@@ -446,6 +446,9 @@ jobs:
       - name: Start the stack (app + Prometheus + Grafana)
         env:
           ADMIN_API_KEY: dev-admin-key
+          # Anonymous Grafana viewer access, on only for this CI stack so the
+          # screenshot step can open the dashboard without credentials.
+          GRAFANA_ANONYMOUS: "true"
         run: docker compose up -d --no-build
 
       - name: Wait for the app to become ready
@@ -522,6 +525,41 @@ jobs:
           curl -fsS -u admin:admin \
             http://127.0.0.1:3000/api/dashboards/uid/devops-rag-assistant \
             | jq -r '.dashboard.title'
+
+      - name: Capture a screenshot of the Grafana dashboard
+        # Relies on anonymous viewer access, which the "Start the stack" step
+        # enables for this throwaway stack via GRAFANA_ANONYMOUS=true.
+        run: |
+          set -euo pipefail
+          mkdir -p docs
+          # Push a little more traffic so the panels are not empty, then wait a
+          # scrape interval for Prometheus to ingest it.
+          for _ in $(seq 1 5); do
+            curl -s -o /dev/null -X POST http://127.0.0.1:8000/api/v1/ask \
+              -H 'Content-Type: application/json' \
+              -d '{"question":"What does Terraform manage?","k":2}'
+          done
+          sleep 20
+          dash_url=$(curl -fsS -u admin:admin \
+            http://127.0.0.1:3000/api/dashboards/uid/devops-rag-assistant \
+            | jq -r '.meta.url')
+          echo "dashboard url: ${dash_url}"
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable \
+            || command -v chromium-browser || command -v chromium)
+          echo "chrome: ${CHROME}"
+          "${CHROME}" --version
+          "${CHROME}" --headless --no-sandbox --disable-gpu --hide-scrollbars \
+            --window-size=1600,1000 --virtual-time-budget=25000 \
+            --screenshot=docs/dashboard.png \
+            "http://127.0.0.1:3000${dash_url}?kiosk&from=now-15m&to=now"
+          ls -lh docs/dashboard.png
+
+      - name: Upload the dashboard screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: grafana-dashboard
+          path: docs/dashboard.png
+          retention-days: 14
 
       - name: Dump compose logs on failure
         if: failure()
