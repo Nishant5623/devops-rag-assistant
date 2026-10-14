@@ -21,6 +21,10 @@ first request after ~15 minutes idle takes 30–60 s to wake (see
 > LLM-synthesized answers. Everything else is identical; the key is not
 > required.
 
+![Grafana dashboard](docs/dashboard.png)
+
+*Grafana dashboard from the CI observability job (request rate, p95 latency, error ratios, memory)*
+
 ## 🔁 Pipeline
 
 ```mermaid
