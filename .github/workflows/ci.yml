@@ -529,15 +529,21 @@ jobs:
       - name: Capture a screenshot of the Grafana dashboard
         # Relies on anonymous viewer access, which the "Start the stack" step
         # enables for this throwaway stack via GRAFANA_ANONYMOUS=true.
+        # Best-effort: headless-Chrome rendering of a JS dashboard is timing
+        # sensitive, so a failure here must never red the whole pipeline.
+        continue-on-error: true
         run: |
           set -euo pipefail
           mkdir -p docs
-          # Push a little more traffic so the panels are not empty, then wait a
-          # scrape interval for Prometheus to ingest it.
-          for _ in $(seq 1 5); do
-            curl -s -o /dev/null -X POST http://127.0.0.1:8000/api/v1/ask \
-              -H 'Content-Type: application/json' \
-              -d '{"question":"What does Terraform manage?","k":2}'
+          # Several rounds spread over ~1 minute so the 5-minute default window
+          # gets a line with multiple points (Prometheus scrapes every 15s).
+          for _ in $(seq 1 6); do
+            for _ in $(seq 1 2); do
+              curl -s -o /dev/null -X POST http://127.0.0.1:8000/api/v1/ask \
+                -H 'Content-Type: application/json' \
+                -d '{"question":"What does Terraform manage?","k":2}'
+            done
+            sleep 10
           done
           sleep 20
           dash_url=$(curl -fsS -u admin:admin \
@@ -551,15 +557,19 @@ jobs:
           "${CHROME}" --headless --no-sandbox --disable-gpu --hide-scrollbars \
             --window-size=1600,1000 --virtual-time-budget=25000 \
             --screenshot=docs/dashboard.png \
-            "http://127.0.0.1:3000${dash_url}?kiosk&from=now-15m&to=now"
+            "http://127.0.0.1:3000${dash_url}?kiosk&from=now-5m&to=now"
           ls -lh docs/dashboard.png
 
       - name: Upload the dashboard screenshot
+        # Pairs with the best-effort capture above: if no PNG was produced,
+        # skip quietly instead of failing the job.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: grafana-dashboard
           path: docs/dashboard.png
           retention-days: 14
+          if-no-files-found: ignore
 
       - name: Dump compose logs on failure
         if: failure()

@@ -1,4 +1,4 @@
-# DevOps Knowledge Assistant — a production-ready RAG service
+# DevOps Knowledge Assistant — a keyless, self-contained RAG service
 
 [![CI](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/ci.yml)
 [![CD](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/cd.yml/badge.svg)](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/cd.yml)
@@ -6,50 +6,95 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ed.svg)](Dockerfile)
 
-A full production-grade **Retrieval-Augmented Generation (RAG)** service built
-with **FastAPI**, **LangChain**, **ChromaDB**, and **scikit-learn** that answers
-questions over a local knowledge base of DevOps notes (Docker, Kubernetes,
-Linux, CI/CD, Ansible).
+**A keyless, fully local Retrieval-Augmented Generation (RAG) service over a
+DevOps knowledge base** — FastAPI + ChromaDB, wrapped in the infrastructure a
+real service needs: a CI/CD pipeline that scans the container image *before* it
+ships, Prometheus/Grafana observability, and Kubernetes/Helm packaging. No API
+key and no pretrained-model download: it retrieves from its own notes and
+answers from them.
 
-> **Works fully keyless.** No API key or pretrained-model download is required.
-> The app retrieves from its own document collection and returns grounded
-> answers. Optionally set `ANTHROPIC_API_KEY` to upgrade to LLM-synthesized
-> answers — everything else runs the same.
+**Live demo:** <https://devops-rag-assistant.onrender.com> — free tier, so the
+first request after ~15 minutes idle takes 30–60 s to wake (see
+[Known limitations](#-known-limitations)).
 
-## ✨ Features
+> Optional: set `ANTHROPIC_API_KEY` to upgrade from extractive answers to
+> LLM-synthesized answers. Everything else is identical; the key is not
+> required.
 
-- **Versioned REST API** under `/api/v1` (FastAPI + OpenAPI docs at `/docs`)
-- **Fully local RAG**: TF-IDF embeddings + ChromaDB vector store, no external calls needed
-- **Self-healing index**: rebuilds the vector store on startup when it is missing
-- **Rate limiting** per-IP on `/ask` (slowapi) and `/ingest`
-- **Prometheus metrics** + **Grafana dashboard** + alerting rules
-- **Structured JSON logging** and **OpenTelemetry tracing** (optional collector)
-- **Request-ID correlation** and hardened **security headers**
-- **Liveness/health/readiness probes** — an unindexed pod is never sent traffic, and `/health` reports the live commit SHA and build time
-- **Optional admin API-key** auth for protected endpoints (`/ingest`, `/metrics`)
-- **Multi-stage, non-root Docker image** with healthcheck
-- **CI/CD** via GitHub Actions (lint → type-check → test → build → scan → deploy)
-- **Kubernetes**: raw manifests (Kustomize), **Helm chart**, and **Terraform** (AWS EKS)
-- **Observability stack** via docker-compose (Prometheus + Grafana)
+## 🔁 Pipeline
 
-## 🏗 Architecture
-
+```mermaid
+flowchart TB
+    Push["push / PR to main"] --> Lint["lint · ruff + mypy + bandit"]
+    Push --> Test["test · pytest + coverage"]
+    Push --> Infra["infra · terraform fmt/validate · helm lint · kubeconform"]
+    Push --> Build["docker build · image loaded locally, not pushed"]
+    Build --> Gate{"Trivy gate<br/>fixable HIGH / CRITICAL"}
+    Gate -- fail --> Stop["job fails · image never reaches GHCR"]
+    Gate -- pass --> Ghcr["push image to GHCR · main only"]
+    Ghcr --> Kind["kind · kubectl apply + helm install --wait"]
+    Ghcr --> Mon["compose · Prometheus scrapes /metrics<br/>Grafana dashboard + screenshot artifact"]
+    Ghcr --> CD["CD · Render deploy hook pinned to the scanned sha"]
+    CD --> Live["poll /health until live sha == pushed sha"]
 ```
+
+CI runs on every push and PR; the push-to-GHCR, kind, monitoring and CD stages
+only run on `main`. The image is built **once** and every downstream check loads
+that same image rather than rebuilding it.
+
+## 🚀 Quick start (no API key)
+
+**Full stack with observability (Docker):**
+
+```bash
+docker compose up --build
+```
+
+- Chat UI: <http://localhost:8000/>
+- Prometheus: <http://localhost:9090/> — scrapes the app's protected `/metrics`
+- Grafana: <http://localhost:3000/> (admin / admin) — the **DevOps RAG
+  Assistant** dashboard is provisioned automatically by CI-backed config
+
+The compose stack defaults `ADMIN_API_KEY` to `dev-admin-key`, and
+`docker/prometheus/prometheus.yml` sends that same value as the `X-Admin-Key`
+header, so the scrape works out of the box. A keyless
+`curl http://localhost:8000/metrics` returns **401**. Change both together.
+
+**Local, no Docker:**
+
+```bash
+pip install -r requirements.txt
+python -m app.ingest          # build the vector index once
+uvicorn app.main:app --reload
+```
+
+Open <http://localhost:8000/> for the chat UI or `/docs` for the API UI.
+
+**Standalone Docker:**
+
+```bash
+docker build -t devops-rag-assistant .
+docker run -p 8000:8000 devops-rag-assistant
+```
+
+## 🧠 How it works
+
+```text
                     ┌──────────────────────────────────────────────┐
- data/*.txt ───────▶│  Ingestion  (app/ingest.py)                  │
-                    │  load → chunk → TF-IDF fit → ChromaDB store  │
+ data/*.txt ───────▶│  Ingest  (app/ingest.py)                      │
+                    │  load → chunk → TF-IDF fit → ChromaDB store   │
                     └──────────────────────────────────────────────┘
-                                               ▲
-                    ┌──────────────────────────┴──────────────────┐
-  question ────────▶│  Retrieval  (app/rag.py)                    │
-                    │  embed query → vector search → top-k chunks │
-                    └──────────────────────────┬──────────────────┘
-                                               ▼
-                    ┌──────────────────────────┴──────────────────┐
-                    │  Generation                                 │
-                    │  extractive fallback  OR  LLM (Claude)      │
-                    └───────────────────┬─────────────────────────┘
-                                        ▼
+                                       ▲
+                    ┌──────────────────┴───────────────────────────┐
+  question ────────▶│  Retrieve  (app/rag.py)                       │
+                    │  embed query → vector search → top-k chunks   │
+                    └──────────────────┬───────────────────────────┘
+                                       ▼
+                    ┌──────────────────┴───────────────────────────┐
+                    │  Answer                                       │
+                    │  extractive fallback  OR  LLM (Claude, opt-in)│
+                    └──────────────────┬───────────────────────────┘
+                                       ▼
                               answer + cited sources
 ```
 
@@ -72,65 +117,91 @@ Linux, CI/CD, Ansible).
 - `question` is validated to 3–500 chars, `k` to 1–10 (422 otherwise).
 - `/ask` returns `found: false` — with an explicit *"not in my notes"* answer
   and empty `sources` — whenever the question shares no vocabulary with the
-  notes or its best hit is beyond `RELEVANCE_MAX_DISTANCE`, so the app never
-  guesses. When `found: true`, each `sources` entry carries the retrieved
-  `text` chunk, `source` file, and `distance`; the chat UI shows every chunk
-  used to form the answer.
+  notes or its best hit is beyond `RELEVANCE_MAX_DISTANCE`. When `found: true`,
+  each `sources` entry carries the retrieved `text` chunk, `source` file, and
+  `distance`; the chat UI shows every chunk used to form the answer.
 - `/health` (root) and `/live` (root) are aliases of `/api/v1/health` and
-  `/api/v1/live`, linked from the chat footer alongside `/docs`. `/metrics`
-  is **not** linked publicly because it requires the `X-Admin-Key` header.
-- Three probes, three jobs. `/live` is pure liveness and always returns 200, so
-  Kubernetes never restart-loops a pod that simply has no index yet. `/health`
+  `/api/v1/live`, linked from the chat footer alongside `/docs`. `/metrics` is
+  **not** linked publicly because it requires the `X-Admin-Key` header.
+- Three probes, three jobs: `/live` is pure liveness and always returns 200, so
+  Kubernetes never restart-loops a pod that simply has no index yet; `/health`
   reports the exact artifact (`sha` + `build_time`) and returns 503 when the
-  index is not loaded, so monitoring sees a genuinely degraded service.
-  `/ready` returns 503 until the index is queryable, so an unusable replica is
-  pulled out of the load balancer instead of serving 400s.
+  index is not loaded; `/ready` returns 503 until the index is queryable, so an
+  unusable replica is pulled out of the load balancer instead of serving 400s.
 
-## 🚀 Quick Start (keyless)
+## 🧭 Design decisions
 
-**Local (no key needed):**
+- **Retrieval runs fully local.** TF-IDF embeddings + ChromaDB — no network
+  call, no API key, no pretrained-model download. `ANTHROPIC_API_KEY` is an
+  optional upgrade, not a dependency.
+- **One image, three runtimes.** The same image runs on Docker, Kubernetes and
+  Render; `docker-entrypoint.sh` honours `$PORT` and `$HOST`.
+- **One build per pipeline, gate before push.** CI builds the image once, runs
+  the Trivy gate on *that* locally-loaded image, and only pushes it if the gate
+  passes. The image is saved as an artifact and `docker load`ed — never rebuilt
+  — by the `kind` and `monitoring` jobs, so every downstream check exercises the
+  bytes that passed the scan.
+- **Deploys are pinned to the scanned tag.** CD calls Render with
+  `imgURL=…:<pushed-sha>` and then polls `/health` until the live `sha` matches,
+  so "deployed" means "the scanned image is answering", not "the hook returned
+  200".
+- **Probes with three different jobs** (see above): a pod that is still indexing
+  is not killed, and a replica that cannot answer is not routed traffic.
+- **Self-sufficient replicas.** The chart mounts an `emptyDir` over the
+  baked-in index, so each pod rebuilds its own copy (`AUTO_INGEST=True`) instead
+  of sharing mutable state; `helm --wait` and `/ready` only succeed once the app
+  can actually answer.
+- **Honest degradation by default.** With no supporting evidence the app
+  returns "not in my notes" and `found: false` rather than guessing. This gate
+  is deliberately simple and is *not* a strong content filter — see
+  [Known limitations](#-known-limitations).
 
-```bash
-pip install -r requirements.txt
-python -m app.ingest          # build the vector index once
-uvicorn app.main:app --reload
-```
-Open **http://localhost:8000/** for the chat UI, or **/docs** for the API UI.
+## ⚠️ Known limitations
 
-**With the full observability stack (Docker):**
+These are deliberate, documented trade-offs — not hidden gaps.
 
-```bash
-docker compose up --build
-```
-- Chat UI: http://localhost:8000/
-- Prometheus: http://localhost:9090/ (scrapes the app's protected `/metrics`)
-- Grafana: http://localhost:3000/ (admin/admin) — the **DevOps RAG Assistant**
-  dashboard is provisioned automatically
+- **The relevance gate is weak — keyword overlap is a false-positive magnet.**
+  A question is accepted if it shares **any single word** with the notes and its
+  best hit is within `RELEVANCE_MAX_DISTANCE=2.0` (which is permissive). Raw
+  output from the current corpus:
 
-The compose stack defaults `ADMIN_API_KEY` to `dev-admin-key`, and
-`docker/prometheus/prometheus.yml` sends that same value as the `X-Admin-Key`
-header, so the scrape of `/metrics` is authenticated out of the box. A keyless
-`curl http://localhost:8000/metrics` returns **401**. Change both together.
+  | Question | `found` | best distance | top source |
+  |---|---|---|---|
+  | `How do I deploy a pizza?` | **`true`** (false positive) | 1.57 | `cicd_notes.txt` |
+  | `pizza` | `false` | 1.0 | — |
+  | `What is the capital of France?` | `false` | 1.0 | — |
+  | `How do I bake sourdough bread?` | `false` | 1.0 | — |
 
-**Capturing a dashboard screenshot for this README:**
+  A question with *no* shared tokens is correctly rejected, but one shared token
+  ("deploy") is enough to defeat the gate and return CI/CD chunks for a pizza
+  question. Tightening this needs semantic (not lexical) retrieval or a stricter
+  distance cap; neither is in place today.
 
-1. `docker compose up --build` and wait for the chat UI to answer.
-2. Send a few questions (through the UI, or
-   `curl -X POST localhost:8000/api/v1/ask -H 'Content-Type: application/json' -d '{"question":"What is a Kubernetes Deployment?","k":2}'`)
-   then wait ~30s for two Prometheus scrapes so the panels have data.
-3. Open Grafana → **Dashboards → DevOps RAG Assistant**. It shows request rate,
-   p95 latency, error ratios and memory.
-4. Screenshot the browser, save it by hand as e.g. `docs/dashboard.png` (CI does
-   not produce it), and add `![Grafana dashboard](docs/dashboard.png)` here.
+- **Free-tier cold starts.** The Render instance sleeps after ~15 minutes idle
+  and rebuilds the index on every wake, so the first request can take 30–60 s.
+  The chat UI shows a "waking up" state and retries rather than failing.
 
-**Standalone Docker:**
+- **Trivy gate scope.** The gate **fails on fixable HIGH/CRITICAL** CVEs;
+  unfixed findings are tracked (the `ignore-unfixed` input is explicit in the
+  workflow), not ignored silently. MEDIUM and UNKNOWN-severity findings are
+  below the gate and do not block a build.
 
-```bash
-docker build -t devops-rag-assistant .
-docker run -p 8000:8000 devops-rag-assistant
-```
+- **Terraform is validated, not applied.** CI runs `terraform fmt` + `validate`
+  (and a real `plan`, but only when AWS credentials are configured; otherwise it
+  prints a notice and skips). No CI job ever runs `terraform apply`, so **no EKS
+  cluster is provisioned**. The module is infrastructure-as-code you *could*
+  apply, not something this repo has deployed.
 
-## 🧪 Testing & Quality
+- **Ingress, HPA and TLS are defined but not exercised.** CI renders them and
+  validates them with `kubeconform`, and applies/installs them into a throwaway
+  kind cluster — but it installs no ingress controller, no TLS certificate and
+  no metrics-server. Nothing serves `rag.example.com` and the HPA never scales;
+  treat both as illustrative.
+
+- **Answers are extractive by default.** With no `ANTHROPIC_API_KEY` the service
+  returns the retrieved note chunks verbatim instead of synthesizing prose.
+
+## 🧪 Testing & quality
 
 ```bash
 pip install -r requirements.txt
@@ -143,12 +214,18 @@ pytest -v --cov=app --cov-report=term-missing
 - **Security scan:** `bandit -c pyproject.toml -r app -q`
 - **Pre-commit:** `pre-commit install`
 
+CI enforces all of the above plus `pytest` with a coverage floor, `terraform
+fmt`/`validate`, `helm lint` + `kubeconform`, a real `kubectl apply`/`helm
+install --wait` in kind, and the compose observability stack.
+
 **Load test** (requires `pip install locust`):
+
 ```bash
 locust -f loadtest/locustfile.py --host http://localhost:8000
 ```
 
 **RAG retrieval-quality eval:**
+
 ```bash
 python -m app.ingest
 python evaluation/evaluate.py
@@ -161,9 +238,9 @@ hand:
 
 1. Push this branch to GitHub.
 2. In Render: **New → Blueprint** → select this repository.
-3. Render reads `render.yaml` and creates a free web service. It will offer to set
-   `ANTHROPIC_API_KEY`; **skip it** — the app answers in extractive mode without a
-   key.
+3. Render reads `render.yaml` and creates a free web service. It will offer to
+   set `ANTHROPIC_API_KEY`; **skip it** — the app answers in extractive mode
+   without a key.
 
 Your service comes up at `https://devops-rag-assistant.onrender.com`.
 
@@ -178,36 +255,27 @@ The Blueprint sets:
 | `CHROMA_DIR=/tmp/chroma_store` | Keeps the index off `/app` and off the ephemeral disk's app directory. |
 | `CORS_ORIGINS=[]` | The chat UI is served by this same app, so same-origin requests need no CORS. |
 
-**Expect a slow first request.** The free instance sleeps after 15 minutes
-idle, and every wake re-imports ChromaDB and re-ingests before it accepts
-traffic — roughly 45 seconds on 0.1 vCPU versus about 7 seconds on a normal
-machine. That is inherent to the free plan, not a misconfiguration. A paid
-`0.5c-512mb` instance behaves the same way but starts faster.
+**Expect a slow first request.** The free instance sleeps after 15 minutes idle,
+and every wake re-ingests. `render.yaml` documents the same behaviour. The
+Dockerfile honours `$PORT`/`$HOST` via `docker-entrypoint.sh`, so the identical
+image works on Docker, Kubernetes and Render.
 
-The chat frontend handles this: it pings `/api/v1/ready` on page load and shows
-a **"Waking up the service…"** status bar with a live elapsed timer until the
-instance is ready, and retries a slow `/ask` (502/503/timeout) with friendly
-"still waking up" updates instead of a raw error. Because `healthCheckPath:`
-keeps Render from routing traffic until the index is built, the very first
-HTML request can still be held by Render itself while the container spins up —
-that brief blank is Render's proxy, and the waking message covers everything
-after the page renders.
+CD deploys here — not to Kubernetes or EKS: on CI success it triggers the Render
+hook pinned to the scanned image's sha and waits for `/health` to report it.
 
-The Dockerfile honours `$PORT` and `$HOST` (defaulting to `8000`/`0.0.0.0`) via
-`docker-entrypoint.sh`, so the same image works unchanged on Docker, Kubernetes
-and Render.
+> Free instances have no uptime guarantee and Render may restart them, so treat
+> the URL as a demo endpoint rather than anything production.
 
-> Free instances also have no uptime guarantee and Render may restart them, so
-> treat the URL as a demo endpoint rather than anything production.
-
-## ☸️ Deploying to Kubernetes
+## ☸️ Kubernetes (manifests + Helm)
 
 **Option A — raw manifests (Kustomize):**
+
 ```bash
 kubectl apply -k k8s/
 ```
 
 **Option B — Helm:**
+
 ```bash
 helm upgrade --install devops-rag helm/devops-rag-assistant \
   --namespace devops-rag --create-namespace
@@ -219,28 +287,31 @@ helm upgrade --install devops-rag helm/devops-rag-assistant \
   --set image.tag=2.0.0
 ```
 
-The chart deploys a Deployment (with startup/liveness/readiness probes), Service,
-ConfigMap, Secret, HorizontalPodAutoscaler, Ingress, and PodDisruptionBudget —
-all running as a **non-root** user.
+The chart deploys a Deployment (with startup/liveness/readiness probes),
+Service, ConfigMap, Secret, HorizontalPodAutoscaler, Ingress, and
+PodDisruptionBudget — all running as a **non-root** user. CI verifies the
+manifests with `kubectl apply` and the chart with `helm install --wait` against
+a throwaway kind cluster.
 
 > **Defined but not exercised in CI:** the Ingress (host `rag.example.com`, TLS
-> secret `devops-rag-tls`) and the HorizontalPodAutoscaler are rendered and
-> schema-validated by `kubeconform`, and applied to the throwaway cluster, but CI
+> secret `devops-rag-tls`) and the HorizontalPodAutoscaler are rendered,
+> schema-validated by `kubeconform` and applied to the throwaway cluster, but CI
 > installs no ingress controller, no TLS certificate and no metrics-server.
-> Nothing serves that host and the HPA never scales — treat both as illustrative.
+> Nothing serves that host and the HPA never scales — treat both as
+> illustrative.
 
-> **How the index reaches the pod:** the Docker image bakes a prebuilt index in at
-> build time, but the chart mounts an `emptyDir` over `/app/chroma_store`, which
-> hides it. The app therefore re-ingests on startup when the index is missing
-> (`AUTO_INGEST=True`), so every replica is self-sufficient and no manual
+> **How the index reaches the pod:** the Docker image bakes a prebuilt index in
+> at build time, but the chart mounts an `emptyDir` over `/app/chroma_store`,
+> which hides it. The app therefore re-ingests on startup when the index is
+> missing (`AUTO_INGEST=True`), so every replica is self-sufficient and no manual
 > `POST /ingest` is needed. `/api/v1/ready` only returns 200 once that finishes,
 > so `helm --wait` blocks until the app can actually answer.
 >
-> If you replace the `emptyDir` with a persistent volume claim, remember the index
-> is per-replica local state: either keep `replicaCount: 1` or let each pod build
-> its own copy rather than sharing one volume across replicas.
+> If you replace the `emptyDir` with a persistent volume claim, remember the
+> index is per-replica local state: either keep `replicaCount: 1` or let each pod
+> build its own copy rather than sharing one volume across replicas.
 
-## 🌩 Deploying to AWS EKS with Terraform
+## 🌩 Terraform (AWS EKS) — validated, not applied
 
 ```bash
 cd terraform/aws
@@ -249,13 +320,13 @@ terraform init
 terraform plan -out=tfplan
 terraform apply tfplan
 ```
-The Terraform module provisions an EKS cluster, VPC, ECR repo (with
-lifecycle policy + image scanning), and deploys the app via the Helm chart.
 
-**CI/CD (GitHub Actions):**
-- `CI` runs on every push/PR: lint → type-check → security scan → test w/ coverage.
-- On `main`, it builds & pushes the image to GHCR and runs a **Trivy** scan.
-- `CD` deploys to EKS via Helm (triggered by CI success or manually).
+The module describes an EKS cluster, a VPC, an ECR repository (with a lifecycle
+policy + image scanning) and a `helm_release` that would deploy the app. **CI
+does not apply any of this:** the `infra` job runs `terraform fmt` and
+`terraform validate` (plus a real `plan` only when AWS credentials are present).
+Treat the module as an example you could apply in your own account — nothing
+here has been provisioned.
 
 ## ⚙️ Configuration (all optional)
 
@@ -272,34 +343,27 @@ Set via environment variables or a `.env` file (see `.env.example`):
 | `ADMIN_API_KEY` | *(empty)* | Protects `/ingest` & `/metrics` via `X-Admin-Key` |
 | `OTLP_ENDPOINT` | *(empty)* | Enable OpenTelemetry tracing (e.g. `collector:4317`) |
 
-> Scale with **replicas**, not uvicorn workers. `/metrics` is served from an
-> in-process Prometheus registry, so multiple workers in one container would each
-> report partial metrics. Use the HPA (`autoscaling` in the Helm values) instead
-> (defined, but not exercised in CI — no metrics-server is installed).
+## 🔒 Before you expose it
 
-## 🔐 Before you expose this to a network
-
-Keyless mode needs no secrets, but two defaults are deliberately open and should
-be changed for anything reachable from outside your workstation:
-
-| Setting | Default | Why it matters |
-|---------|---------|----------------|
-| `ADMIN_API_KEY` | *(empty)* | Empty disables auth on `POST /ingest` (rebuilds the index) and `GET /metrics`. Set a real secret. |
-| `CORS_ORIGINS` | `*` | Allows any origin. Set to your real frontend origin. |
+| Setting | Default | Why |
+| --- | --- | --- |
+| `ADMIN_API_KEY` | *(empty)* | Empty means `/ingest` and `/metrics` are open. Set a key on any shared deployment. |
+| `CORS_ORIGINS` | `*` | Restrict to your real origin before exposing the API. |
 | `GRAFANA_ADMIN_PASSWORD` | `admin` | Only affects `docker compose`; set it before sharing the stack. |
+| `GF_AUTH_ANONYMOUS_ENABLED` | `false` | Off by default; only CI turns it on for its throwaway screenshot stack. |
 
 `ANTHROPIC_API_KEY` can stay empty — that is the supported keyless default.
 
-## 🧰 Tech Stack
+## 🧰 Tech stack
 
 **Python** · **FastAPI** · **LangChain** · **ChromaDB** (vector DB) ·
 **scikit-learn** (TF-IDF) · **slowapi** (rate limiting) · **Prometheus** ·
 **Grafana** · **OpenTelemetry** · **Docker** · **GitHub Actions** ·
 **Kubernetes** · **Helm** · **Terraform** · **locust**
 
-## 📂 Project Layout
+## 📂 Project layout
 
-```
+```text
 app/                 # Python application
   config.py          # centralised settings (pydantic-settings)
   embeddings.py      # TF-IDF Chroma embedding function
@@ -314,7 +378,7 @@ static/              # chat frontend (HTML/CSS/JS)
 tests/               # pytest suite
 k8s/                 # raw Kubernetes manifests (Kustomize)
 helm/                # Helm chart
-terraform/           # AWS EKS Terraform module
+terraform/           # AWS EKS Terraform module (validated, not applied in CI)
 docker/              # Prometheus/Grafana configs + dashboards
 loadtest/            # Locust script
 evaluation/          # RAG retrieval-quality harness

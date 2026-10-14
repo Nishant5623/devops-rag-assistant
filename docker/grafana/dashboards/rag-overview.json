@@ -12,8 +12,8 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0 } ] }
+          "mappings": [ { "options": { "0": { "color": "red", "index": 0, "text": "DOWN" }, "1": { "color": "green", "index": 1, "text": "UP" } }, "type": "value" } ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
         },
         "overrides": []
       },
@@ -50,7 +50,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
       "id": 4,
       "options": { "legend": { "calcs": [ "max", "mean" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
-      "targets": [ { "expr": "sum(rate(http_requests_total{job=\"devops-rag\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"devops-rag\"}[5m]))", "legendFormat": "5xx ratio", "refId": "A" }, { "expr": "sum(rate(http_requests_total{job=\"devops-rag\",status=~\"4..\"}[5m])) / sum(rate(http_requests_total{job=\"devops-rag\"}[5m]))", "legendFormat": "4xx ratio", "refId": "B" } ],
+      "targets": [ { "expr": "(sum(rate(http_requests_total{job=\"devops-rag\",status=~\"5..\"}[5m])) or vector(0)) / sum(rate(http_requests_total{job=\"devops-rag\"}[5m]))", "legendFormat": "5xx ratio", "refId": "A" }, { "expr": "(sum(rate(http_requests_total{job=\"devops-rag\",status=~\"4..\"}[5m])) or vector(0)) / sum(rate(http_requests_total{job=\"devops-rag\"}[5m]))", "legendFormat": "4xx ratio", "refId": "B" } ],
       "title": "Error Ratios",
       "type": "timeseries"
     },
@@ -69,7 +69,7 @@
   "schemaVersion": 39,
   "tags": [ "devops-rag" ],
   "templating": { "list": [] },
-  "time": { "from": "now-1h", "to": "now" },
+  "time": { "from": "now-5m", "to": "now" },
   "timepicker": {},
   "timezone": "",
   "title": "DevOps RAG Assistant",
