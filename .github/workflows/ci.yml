@@ -460,12 +460,6 @@ jobs:
           done
           echo "ready: $(curl -fsS http://127.0.0.1:8000/api/v1/ready)"
 
-      - name: Prove /metrics rejects a keyless request
-        run: |
-          set -euo pipefail
-          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/metrics)
-          echo "GET /metrics without X-Admin-Key -> $code"
-          [ "$code" = "401" ] || { echo "::error::/metrics should be 401 without the admin key"; exit 1; }
 
       - name: Send some /ask traffic
         # Not -f: a 429 from the rate limiter is still traffic worth counting.
@@ -535,14 +529,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p docs
-          # Several rounds spread over ~1 minute so the 5-minute default window
-          # gets a line with multiple points (Prometheus scrapes every 15s).
-          for _ in $(seq 1 6); do
-            for _ in $(seq 1 2); do
-              curl -s -o /dev/null -X POST http://127.0.0.1:8000/api/v1/ask \
-                -H 'Content-Type: application/json' \
-                -d '{"question":"What does Terraform manage?","k":2}'
-            done
+          # /ask is limited to 10 requests/minute per IP and the two steps
+          # above already spent 8 of those from 127.0.0.1, so wait out that
+          # window and then trickle one request every 10s: enough points to
+          # span the 5-minute view, never enough to trip the limiter (a 429
+          # would show up as a 4xx bump in Error Ratios).
+          sleep 60
+          for _ in $(seq 1 8); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+              http://127.0.0.1:8000/api/v1/ask \
+              -H 'Content-Type: application/json' \
+              -d '{"question":"What does Terraform manage?","k":2}')
+            echo "POST /api/v1/ask -> $code"
             sleep 10
           done
           sleep 20
@@ -570,6 +568,16 @@ jobs:
           path: docs/dashboard.png
           retention-days: 14
           if-no-files-found: ignore
+
+      - name: Prove /metrics rejects a keyless request
+        # Deliberately after the screenshot: its 401 would otherwise land in
+        # the dashboard's 5-minute window and read as a 4xx from normal
+        # traffic. It still proves /metrics is gated.
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/metrics)
+          echo "GET /metrics without X-Admin-Key -> $code"
+          [ "$code" = "401" ] || { echo "::error::/metrics should be 401 without the admin key"; exit 1; }
 
       - name: Dump compose logs on failure
         if: failure()
