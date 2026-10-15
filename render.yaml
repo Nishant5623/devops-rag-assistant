@@ -5,7 +5,7 @@
 #
 # Validate before pushing:  render blueprints validate render.yaml
 #
-# Free plan is 0.1 CPU / 512 MB. The app peaks at ~190 MB RSS, so it fits, but
+# Free plan is 0.1 CPU / 512 MB. The app peaks at ~203 MB RSS, so it fits, but
 # expect a slow cold start: the free instance sleeps after 15 minutes idle and
 # re-ingests on every wake.
 services:

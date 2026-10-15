@@ -1,4 +1,4 @@
-# DevOps Knowledge Assistant — a keyless, self-contained RAG service
+# DevOps Knowledge Assistant: CI/CD, container security and observability
 
 [![CI](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/ci.yml)
 [![CD](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/cd.yml/badge.svg)](https://github.com/Nishant5623/devops-rag-assistant/actions/workflows/cd.yml)
@@ -57,7 +57,8 @@ docker compose up --build
 - Chat UI: <http://localhost:8000/>
 - Prometheus: <http://localhost:9090/> — scrapes the app's protected `/metrics`
 - Grafana: <http://localhost:3000/> (admin / admin) — the **DevOps RAG
-  Assistant** dashboard is provisioned automatically by CI-backed config
+  Assistant** dashboard is provisioned from the version-controlled files
+  in `docker/grafana/`, so it loads on first start
 
 The compose stack defaults `ADMIN_API_KEY` to `dev-admin-key`, and
 `docker/prometheus/prometheus.yml` sends that same value as the `X-Admin-Key`
@@ -138,8 +139,9 @@ docker run -p 8000:8000 devops-rag-assistant
 - **Retrieval runs fully local.** TF-IDF embeddings + ChromaDB — no network
   call, no API key, no pretrained-model download. `ANTHROPIC_API_KEY` is an
   optional upgrade, not a dependency.
-- **One image, three runtimes.** The same image runs on Docker, Kubernetes and
-  Render; `docker-entrypoint.sh` honours `$PORT` and `$HOST`.
+- **One image, three runtimes.** The same image runs on Docker, on Kubernetes
+  (validated on a throwaway kind cluster in CI) and on Render;
+  `docker-entrypoint.sh` honours `$PORT` and `$HOST`.
 - **One build per pipeline, gate before push.** CI builds the image once, runs
   the Trivy gate on *that* locally-loaded image, and only pushes it if the gate
   passes. The image is saved as an artifact and `docker load`ed — never rebuilt
@@ -252,7 +254,7 @@ The Blueprint sets:
 
 | Setting | Why |
 | --- | --- |
-| `plan: free` | 0.1 CPU / 512 MB. The app peaks at ~190 MB RSS, so it fits. |
+| `plan: free` | 0.1 CPU / 512 MB. The app peaks at ~203 MB RSS, so it fits. |
 | `healthCheckPath: /api/v1/ready` | Readiness, not liveness. The instance is not routed traffic until the index is queryable. |
 | `PROXY_HEADERS=1` | Render proxies to the container. Without this, slowapi sees the proxy IP for every caller and the whole internet shares one 10-requests-per-minute bucket. |
 | `ADMIN_API_KEY` (generated) | Random 256-bit value. Read it from the dashboard to call `/ingest` or `/metrics`; both return 401 without it. |
@@ -262,7 +264,8 @@ The Blueprint sets:
 **Expect a slow first request.** The free instance sleeps after 15 minutes idle,
 and every wake re-ingests. `render.yaml` documents the same behaviour. The
 Dockerfile honours `$PORT`/`$HOST` via `docker-entrypoint.sh`, so the identical
-image works on Docker, Kubernetes and Render.
+image works on Docker, on Kubernetes (validated on a kind cluster in CI) and
+Render.
 
 CD deploys here — not to Kubernetes or EKS: on CI success it triggers the Render
 hook pinned to the scanned image's sha and waits for `/health` to report it.
@@ -283,12 +286,12 @@ kubectl apply -k k8s/
 ```bash
 helm upgrade --install devops-rag helm/devops-rag-assistant \
   --namespace devops-rag --create-namespace
-# production example:
+# production example (CI pushes :latest and :<commit-sha>):
 helm upgrade --install devops-rag helm/devops-rag-assistant \
   --namespace devops-rag \
   --values helm/devops-rag-assistant/values-production.yaml \
   --set secrets.adminApiKey=<your-key> \
-  --set image.tag=2.0.0
+  --set image.tag=latest
 ```
 
 The chart deploys a Deployment (with startup/liveness/readiness probes),
@@ -360,7 +363,8 @@ Set via environment variables or a `.env` file (see `.env.example`):
 
 ## 🧰 Tech stack
 
-**Python** · **FastAPI** · **LangChain** · **ChromaDB** (vector DB) ·
+**Python** · **FastAPI** · **LangChain** (recursive text splitting) ·
+**ChromaDB** (vector DB) ·
 **scikit-learn** (TF-IDF) · **slowapi** (rate limiting) · **Prometheus** ·
 **Grafana** · **OpenTelemetry** · **Docker** · **GitHub Actions** ·
 **Kubernetes** · **Helm** · **Terraform** · **locust**

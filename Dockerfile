@@ -33,6 +33,13 @@ RUN python -m venv /opt/venv && \
 # ---------------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
+# Link the published image to its source repository. Without this, GHCR
+# cannot associate the package with the repo, so the package page shows no
+# README or repo link and the package cannot inherit the repo's visibility.
+LABEL org.opencontainers.image.source="https://github.com/Nishant5623/devops-rag-assistant" \
+      org.opencontainers.image.title="DevOps Knowledge Assistant" \
+      org.opencontainers.image.description="Keyless RAG service over a DevOps knowledge base (FastAPI + ChromaDB)"
+
 # The exact commit this image was built from. CI passes github.sha; when the
 # image is built elsewhere (e.g. Render) the value stays "dev" and the app
 # falls back to Render's RENDER_GIT_COMMIT env var at runtime. See config.py.
