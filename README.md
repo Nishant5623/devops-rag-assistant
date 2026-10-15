@@ -17,6 +17,10 @@ answers from them.
 first request after ~15 minutes idle takes 30–60 s to wake (see
 [Known limitations](#-known-limitations)).
 
+![Chat UI at 1280px](docs/ui-desktop.png)
+
+*Chat UI at 1280px — every answer quotes the note chunks it was retrieved from*
+
 > Optional: set `ANTHROPIC_API_KEY` to upgrade from extractive answers to
 > LLM-synthesized answers. Everything else is identical; the key is not
 > required.
