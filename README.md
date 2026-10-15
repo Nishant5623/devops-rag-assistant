@@ -332,14 +332,19 @@ a throwaway kind cluster.
 ```bash
 cd terraform/aws
 terraform init
-# set TF_VAR_admin_api_key securely, then:
+# Both are required - export them, do not commit them:
+export TF_VAR_admin_api_key=<your-key>
+export TF_VAR_image_tag=<ci-pushed-commit-sha>
 terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
 The module describes an EKS cluster, a VPC, an ECR repository (with a lifecycle
-policy + image scanning) and a `helm_release` that would deploy the app. **CI
-does not apply any of this:** the `infra` job runs `terraform fmt` and
+policy + image scanning) and a `helm_release` that would deploy the app. It
+deliberately leaves `image_tag` with no default, so a plan fails until you
+pass `TF_VAR_image_tag` — `:latest` is mutable and would re-introduce the
+stale-image problem described above. **CI does not apply any of this:** the
+`infra` job runs `terraform fmt` and
 `terraform validate` (plus a real `plan` only when AWS credentials are present).
 Treat the module as an example you could apply in your own account — nothing
 here has been provisioned.

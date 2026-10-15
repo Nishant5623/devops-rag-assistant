@@ -24,6 +24,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: app
+          # DEMO/CI ONLY. :latest is mutable, and IfNotPresent is deliberate:
+          # the kind job loads the scanned image locally as :latest, and
+          # IfNotPresent keeps kubelet from pulling a different :latest from
+          # GHCR. Pin an immutable tag for anything real.
           image: ghcr.io/nishant5623/devops-rag-assistant:latest
           imagePullPolicy: IfNotPresent
           # The namespace enforces the restricted Pod Security Standard, which

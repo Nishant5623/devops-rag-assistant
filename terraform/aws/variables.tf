@@ -40,9 +40,14 @@ variable "image_repository" {
 }
 
 variable "image_tag" {
-  description = "Container image tag to deploy"
+  description = <<-EOT
+    Immutable container image tag to deploy. Deliberately has no default: a
+    plan fails until you set it, because :latest is mutable and a node that
+    already holds it will not re-pull - a re-apply can silently keep running
+    old bytes. Set it to the commit sha CI pushed to GHCR, e.g.
+    TF_VAR_image_tag=$(git rev-parse HEAD).
+  EOT
   type        = string
-  default     = "latest"
 }
 
 variable "admin_api_key" {

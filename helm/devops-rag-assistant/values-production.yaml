@@ -21,7 +21,9 @@ image:
   # Pin the sha of the CI run you want to deploy, e.g.
   #   --set image.tag=$(git rev-parse HEAD)
   tag: ""
-  pullPolicy: Always
+  # The pinned tag is immutable, so a node's cached copy is always the right
+  # bytes and there is no need to re-check the registry on every restart.
+  pullPolicy: IfNotPresent
 
 config:
   env: production

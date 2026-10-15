@@ -140,6 +140,14 @@ resource "helm_release" "app" {
     name  = "image.tag"
     value = var.image_tag
   }
+  # Pair the required immutable tag with IfNotPresent: a node's cached copy
+  # is always the right bytes, so there is no reason to re-pull on every
+  # restart. (The chart default is also IfNotPresent; this makes it explicit
+  # so a mutable image_tag cannot quietly ship with the wrong pull policy.)
+  set {
+    name  = "image.pullPolicy"
+    value = "IfNotPresent"
+  }
   set {
     name  = "config.env"
     value = var.environment

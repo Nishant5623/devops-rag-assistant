@@ -5,6 +5,10 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/nishant5623/devops-rag-assistant
+  # DEMO/CI ONLY. :latest is mutable, and IfNotPresent is deliberate: the
+  # kind job loads the scanned image locally as :latest, and IfNotPresent
+  # keeps kubelet from pulling a different :latest from GHCR. For anything
+  # real, pin an immutable tag (see values-production.yaml).
   tag: latest
   pullPolicy: IfNotPresent
 

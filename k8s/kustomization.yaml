@@ -19,4 +19,5 @@ resources:
 
 images:
   - name: ghcr.io/nishant5623/devops-rag-assistant
+    # DEMO/CI ONLY: :latest is mutable; the kind job loads this tag locally.
     newTag: latest

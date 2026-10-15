@@ -118,7 +118,9 @@ jobs:
             echo "::notice::AWS credentials not configured - skipping terraform plan (fmt + validate already passed)."
             exit 0
           fi
-          terraform plan -input=false -no-color -var admin_api_key=ci-plan-only
+          terraform plan -input=false -no-color \
+            -var admin_api_key=ci-plan-only \
+            -var image_tag=ci-plan-only
 
       - uses: azure/setup-helm@v4
         with:
