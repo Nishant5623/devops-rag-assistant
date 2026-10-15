@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "devops-rag-assistant values",
+  "description": "Validated by helm lint / helm template / helm install, so a chart that would reference a mutable or empty image tag fails before it reaches a cluster.",
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "object",
+      "required": ["repository", "tag"],
+      "description": "image.tag must be a non-empty, pinned reference. :latest is mutable and exists only for demos and the CI kind job; the template also refuses to render without a tag (belt and braces).",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Registry/repository CI actually pushes to."
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Pin an immutable tag (a CI-pushed commit sha) for any real deployment."
+        },
+        "pullPolicy": {
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    }
+  }
+}

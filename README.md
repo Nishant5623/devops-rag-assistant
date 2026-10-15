@@ -286,13 +286,22 @@ kubectl apply -k k8s/
 ```bash
 helm upgrade --install devops-rag helm/devops-rag-assistant \
   --namespace devops-rag --create-namespace
-# production example (CI pushes :latest and :<commit-sha>):
+# Production: pin the commit SHA that CI pushed.
 helm upgrade --install devops-rag helm/devops-rag-assistant \
   --namespace devops-rag \
   --values helm/devops-rag-assistant/values-production.yaml \
   --set secrets.adminApiKey=<your-key> \
-  --set image.tag=latest
+  --set image.tag=<commit-sha>
 ```
+
+> **Pin the commit SHA, not `:latest`.** CI pushes two tags to GHCR on every
+> build to `main`: `:<commit-sha>`, which is immutable, and `:latest`, which
+> exists so demos and the `kind` job have a tag to pull — it moves on every
+> build, so never deploy it. `values-production.yaml` leaves `image.tag`
+> empty, and the chart's `values.schema.json` rejects the empty value, so
+> both `helm lint` and `helm install` fail until the tag is pinned. A
+> production install therefore always pins the exact commit that passed the
+> Trivy gate.
 
 The chart deploys a Deployment (with startup/liveness/readiness probes),
 Service, ConfigMap, Secret, HorizontalPodAutoscaler, Ingress, and

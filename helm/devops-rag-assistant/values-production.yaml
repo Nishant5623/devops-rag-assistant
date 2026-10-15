@@ -8,13 +8,19 @@
 #     --namespace devops-rag \
 #     --values helm/devops-rag-assistant/values-production.yaml \
 #     --set secrets.adminApiKey=<your-key> \
-#     --set image.tag=latest
+#     --set image.tag=<commit-sha>
 
 replicaCount: 3
 
 image:
   repository: ghcr.io/nishant5623/devops-rag-assistant
-  tag: latest
+  # REQUIRED - intentionally empty, so the chart fails to render until it is
+  # set. CI pushes two tags to GHCR on every build to main: :<commit-sha>,
+  # which is immutable and the one to pin, and :latest, which exists only so
+  # demos and the kind job have a tag to pull - it moves on every build.
+  # Pin the sha of the CI run you want to deploy, e.g.
+  #   --set image.tag=$(git rev-parse HEAD)
+  tag: ""
   pullPolicy: Always
 
 config:

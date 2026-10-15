@@ -140,6 +140,24 @@ jobs:
             -f helm/devops-rag-assistant/values.yaml \
             | kubeconform -strict -summary -kubernetes-version 1.30.0
 
+      - name: Production values require a pinned image tag
+        # values-production.yaml deliberately leaves image.tag empty, and
+        # values.schema.json rejects the empty value (the template's
+        # `required` guard is the second line of defence). Prove lint still
+        # fails without a tag, and that the production values render once a
+        # tag is pinned.
+        run: |
+          if helm lint helm/devops-rag-assistant \
+               -f helm/devops-rag-assistant/values-production.yaml >/dev/null 2>&1; then
+            echo "::error::values-production.yaml rendered without image.tag - the pin guard is broken."
+            exit 1
+          fi
+          echo "guard OK: production values refuse to render without image.tag"
+          helm template devops-rag helm/devops-rag-assistant \
+            -f helm/devops-rag-assistant/values-production.yaml \
+            --set image.tag=ci-plan-only \
+            | kubeconform -strict -summary -kubernetes-version 1.30.0
+
       - name: Validate the kustomize manifests
         run: |
           kubectl kustomize k8s \

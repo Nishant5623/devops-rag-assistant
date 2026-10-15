@@ -27,7 +27,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: app
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          # image.tag is required and is never defaulted here: :latest is
+          # mutable, so the chart refuses to render a release until the tag
+          # is pinned explicitly (see values-production.yaml).
+          image: "{{ .Values.image.repository }}:{{ required "image.tag is required - pin the CI-pushed commit sha, e.g. --set image.tag=<commit-sha>; :latest is demo-only" .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # The namespace enforces the restricted Pod Security Standard, which
           # rejects pods that allow privilege escalation or keep capabilities.
