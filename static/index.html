@@ -3,52 +3,127 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DevOps Knowledge Assistant</title>
+  <title>DevOps Knowledge Assistant — grounded answers from local notes</title>
+  <meta
+    name="description"
+    content="A retrieval-only DevOps assistant. Ask about Docker, Kubernetes, Linux, CI/CD or Ansible and read the exact note chunks each answer was built from."
+  />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#0e1117" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f5f7fb" media="(prefers-color-scheme: light)" />
+
+  <link rel="canonical" href="https://devops-rag-assistant.onrender.com/" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="DevOps Knowledge Assistant" />
+  <meta property="og:title" content="DevOps Knowledge Assistant" />
+  <meta
+    property="og:description"
+    content="Ask DevOps questions and read the exact note chunks each answer was retrieved from. Docker, Kubernetes, Linux, CI/CD and Ansible."
+  />
+  <meta property="og:url" content="https://devops-rag-assistant.onrender.com/" />
+  <meta property="og:image" content="https://devops-rag-assistant.onrender.com/static/og.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="DevOps Knowledge Assistant — grounded answers with cited note chunks" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="DevOps Knowledge Assistant" />
+  <meta
+    name="twitter:description"
+    content="Ask DevOps questions and read the exact note chunks each answer was retrieved from."
+  />
+  <meta name="twitter:image" content="https://devops-rag-assistant.onrender.com/static/og.png" />
+  <meta name="twitter:image:alt" content="DevOps Knowledge Assistant — grounded answers with cited note chunks" />
+
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <a class="skip-link" href="#chat">Skip to the chat</a>
+
   <div class="app">
     <header class="header">
-      <h1>DevOps Knowledge Assistant</h1>
-      <p class="subtitle">Ask questions over the local DevOps notes (Docker, Kubernetes, Linux, CI/CD, Ansible).</p>
-    </header>
-
-    <main class="chat" id="chat" aria-live="polite">
-      <div class="welcome" id="welcome">
-        <p class="prompt-hint">Try one of these:</p>
-        <div class="chips">
-          <button type="button" class="chip" data-q="What is a Kubernetes Deployment?">What is a Kubernetes Deployment?</button>
-          <button type="button" class="chip" data-q="How does a Dockerfile work?">How does a Dockerfile work?</button>
-          <button type="button" class="chip" data-q="How do Docker volumes work?">How do Docker volumes work?</button>
-          <button type="button" class="chip" data-q="How do I check disk space on Linux?">How do I check disk space on Linux?</button>
-          <button type="button" class="chip" data-q="How does Ansible automate tasks?">How does Ansible automate tasks?</button>
-          <button type="button" class="chip" data-q="What is a CI/CD pipeline?">What is a CI/CD pipeline?</button>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" focusable="false" aria-hidden="true">
+            <path d="M4 6.5 12 3l8 3.5-8 3.5-8-3.5Z" fill="currentColor" opacity=".95" />
+            <path d="M4 12l8 3.5L20 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".7" />
+            <path d="M4 17l8 3.5L20 17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".45" />
+          </svg>
+        </span>
+        <div class="brand-text">
+          <h1 class="brand-title">DevOps Knowledge Assistant</h1>
+          <p class="subtitle">
+            Retrieval-only answers over local DevOps notes — Docker, Kubernetes, Linux, CI/CD, Ansible.
+          </p>
         </div>
       </div>
+
+      <p class="status-pill" id="status" data-state="checking" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span class="status-label" id="status-label">Checking service…</span>
+      </p>
+    </header>
+
+    <main class="chat" id="chat" aria-live="polite" aria-label="Conversation">
+      <section class="hero" id="welcome">
+        <h2 class="hero-title">Ask about your DevOps notes</h2>
+        <p class="hero-sub">
+          Every answer quotes the note chunks it matched, so you can check the source yourself.
+          Nothing is invented: if the notes don't cover it, the assistant says so.
+        </p>
+        <p class="prompt-hint" id="prompt-hint">Try an example</p>
+        <ul class="chips" aria-labelledby="prompt-hint">
+          <li><button type="button" class="chip" data-q="What is a Kubernetes Deployment?">What is a Kubernetes Deployment?</button></li>
+          <li><button type="button" class="chip" data-q="How does a Dockerfile work?">How does a Dockerfile work?</button></li>
+          <li><button type="button" class="chip" data-q="How do Docker volumes work?">How do Docker volumes work?</button></li>
+          <li><button type="button" class="chip" data-q="How do I check disk space on Linux?">How do I check disk space on Linux?</button></li>
+          <li><button type="button" class="chip" data-q="How does Ansible automate tasks?">How does Ansible automate tasks?</button></li>
+          <li><button type="button" class="chip" data-q="What is a CI/CD pipeline?">What is a CI/CD pipeline?</button></li>
+        </ul>
+      </section>
     </main>
 
     <div class="waking" id="waking" hidden></div>
 
-    <form class="input-row" id="form">
-      <input
-        type="text"
-        id="input"
-        class="input"
-        placeholder="Type your question..."
-        autocomplete="off"
-        minlength="3"
-        maxlength="500"
-        required
-      />
-      <button type="submit" class="send" id="send">Send</button>
+    <form class="input-row" id="form" autocomplete="off">
+      <div class="input-wrap">
+        <input
+          type="text"
+          id="input"
+          class="input"
+          name="question"
+          placeholder="Ask a DevOps question…"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+          enterkeyhint="send"
+          minlength="3"
+          maxlength="500"
+          required
+          aria-label="Your question"
+          aria-describedby="input-hint"
+        />
+        <p class="input-hint" id="input-hint">
+          <span class="input-hint-text">3–500 characters · Enter to send</span>
+          <span class="input-count" id="input-count" hidden aria-live="off"></span>
+        </p>
+      </div>
+      <button type="submit" class="send" id="send" aria-label="Send question">
+        <span class="send-label">Send</span>
+      </button>
     </form>
 
     <footer class="footer">
       <a href="/health" target="_blank" rel="noopener">Health</a>
       <a href="/docs" target="_blank" rel="noopener">API docs</a>
+      <a href="https://github.com/Nishant5623/devops-rag-assistant" target="_blank" rel="noopener noreferrer">GitHub</a>
     </footer>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/app.js" defer></script>
 </body>
 </html>

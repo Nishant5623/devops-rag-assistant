@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="DevOps Knowledge Assistant">
+  <defs>
+    <linearGradient id="accent" x1="14" y1="8" x2="52" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7db0ff" />
+      <stop offset="1" stop-color="#a78bfa" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="#0e1117" />
+  <rect x="1.5" y="1.5" width="61" height="61" rx="13.5" fill="none" stroke="url(#accent)" stroke-opacity="0.4" stroke-width="3" />
+  <path d="M18 26 32 19.5 46 26l-14 6.5L18 26Z" fill="url(#accent)" />
+  <path d="M18 34l14 6.5L46 34" fill="none" stroke="url(#accent)" stroke-opacity="0.72" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M18 42.5 32 49l14-6.5" fill="none" stroke="url(#accent)" stroke-opacity="0.42" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

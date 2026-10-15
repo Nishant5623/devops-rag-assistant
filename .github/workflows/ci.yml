@@ -602,3 +602,108 @@ jobs:
       - name: Dump compose logs on failure
         if: failure()
         run: docker compose logs --no-color --tail=200
+
+  frontend:
+    name: "Frontend (headless Chrome: console + screenshots)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build the index
+        run: python -m app.ingest
+
+      - name: Start the app (keyless, extractive)
+        env:
+          # No API key: the page must render the real, keyless answer path.
+          ANTHROPIC_API_KEY: ""
+        run: |
+          set -euo pipefail
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8099 \
+            >/tmp/uvicorn-frontend.log 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8099/api/v1/ready >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          echo "ready:  $(curl -fsS http://127.0.0.1:8099/api/v1/ready)"
+          echo "health: $(curl -fsS http://127.0.0.1:8099/health)"
+
+      - name: Check design-token contrast (WCAG AA)
+        run: python tools/check_contrast.py
+
+      - name: Assert zero console errors and zero CSP violations
+        # The app serves a strict CSP (script-src 'self'; style-src 'self';
+        # img-src 'self' data:). Chrome writes page console messages to stderr
+        # with --enable-logging=stderr, so an inline <script>/<style>, a style=""
+        # attribute or an off-origin asset surfaces here as a "violates the
+        # following Content Security Policy directive" line, and a front-end
+        # exception as an "Uncaught" line. Either one fails this job.
+        run: |
+          set -euo pipefail
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable \
+            || command -v chromium-browser || command -v chromium)
+          echo "chrome: ${CHROME}"
+          "${CHROME}" --version
+          mkdir -p artifacts
+          failed=0
+          for spec in "home:/:1280" "home:/:375" "docs:/docs:1280" "docs:/docs:375"; do
+            name="${spec%%:*}"; rest="${spec#*:}"; url_path="${rest%:*}"; width="${rest##*:}"
+            log="artifacts/${name}-${width}.console.log"
+            echo "----- ${name} ${url_path} @ ${width}px -----"
+            "${CHROME}" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+              --hide-scrollbars --no-first-run --no-default-browser-check \
+              --user-data-dir="$(mktemp -d)" \
+              --window-size="${width},900" --virtual-time-budget=9000 \
+              --enable-logging=stderr --log-level=0 \
+              --dump-dom "http://127.0.0.1:8099${url_path}" >/dev/null 2>"${log}" || true
+            grep -E 'CONSOLE|Refused to|Content Security Policy' "${log}" \
+              || echo "no console output"
+            if grep -qE 'Content Security Policy|Refused to|Uncaught' "${log}"; then
+              echo "::error::console error or CSP violation on ${url_path} @ ${width}px"
+              failed=1
+            fi
+          done
+          exit ${failed}
+
+      - name: Capture screenshots of / at 1280px and 375px
+        # Best-effort: headless rendering is timing sensitive and these images
+        # exist for human review, so a failure here must not red the pipeline.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable \
+            || command -v chromium-browser || command -v chromium)
+          mkdir -p artifacts
+          for width in 1280 375; do
+            "${CHROME}" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+              --hide-scrollbars --no-first-run --no-default-browser-check \
+              --user-data-dir="$(mktemp -d)" \
+              --window-size="${width},900" --virtual-time-budget=9000 \
+              --screenshot="artifacts/home-${width}.png" \
+              "http://127.0.0.1:8099/"
+            ls -lh "artifacts/home-${width}.png"
+          done
+
+      - name: Upload the front-end screenshots and console logs
+        # The screenshots are deliberately NOT committed to the repository:
+        # they are reviewed from this artifact.
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-screenshots
+          path: artifacts/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Dump the app log on failure
+        if: failure()
+        run: cat /tmp/uvicorn-frontend.log || true

@@ -249,6 +249,16 @@ def live_root() -> dict:
 
 # --- Static frontend (mounted last so it does not shadow API routes) ------
 if settings.static_dir.exists():
+    # Public asset alias. Social crawlers fetch the Open Graph / Twitter card
+    # image from the conventional /static/<file> path that index.html advertises
+    # (https://<host>/static/og.png), so the same directory is served under
+    # /static as well as from the root. Both mounts are registered after every
+    # API route and neither can shadow /health, /docs, /metrics or /api/v1/*.
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(settings.static_dir)),
+        name="static-assets",
+    )
     app.mount(
         "/", StaticFiles(directory=str(settings.static_dir), html=True), name="static"
     )
